@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>My Addresses</title>
+<link rel="stylesheet" href="cartstyle.css">
+</head>
+<body>
+
+<header class="main-header">
+<h1>My Addresses</h1>
+<nav class="nav-menu">
+<a href="index.html">Home</a>
+<a href="stores.html">Stores</a>
+<a href="cart.html">Cart</a>
+</nav>
+</header>
+
+<section class="cart-container">
+    <section class="cart-checkout" style="margin-bottom:18px;">
+        <h3>Saved Addresses</h3>
+        <div id="addressList" style="margin-top:12px;"></div>
+    </section>
+
+    <section class="cart-checkout">
+        <h3>Add new address</h3>
+
+        <div class="cart-checkout__row" style="margin-top:12px;">
+            <label for="addressType">Type</label>
+            <select id="addressType">
+                <option value="Home">Home</option>
+                <option value="Work">Work</option>
+                <option value="Other">Other</option>
+            </select>
+        </div>
+
+        <div class="cart-address-add" style="border-top:none; padding-top:0; margin-top:12px;">
+            <div class="cart-address-add__grid">
+                <div>
+                    <label for="customerName">Name</label>
+                    <input id="customerName" type="text" placeholder="Your name" autocomplete="name" required maxlength="100">
+                </div>
+
+                <div>
+                    <label for="phone">Phone</label>
+                    <input id="phone" type="tel" placeholder="Mobile number" autocomplete="tel" required inputmode="numeric" pattern="[0-9]{10}" maxlength="10">
+                </div>
+
+                <div>
+                    <label for="house">House / Flat</label>
+                    <input id="house" type="text" placeholder="House no, flat, building" autocomplete="address-line1" required maxlength="120">
+                </div>
+
+                <div>
+                    <label for="area">Area / Street</label>
+                    <input id="area" type="text" placeholder="Street, area" autocomplete="address-line2" required maxlength="160">
+                </div>
+
+                <div>
+                    <label for="landmark">Landmark (optional)</label>
+                    <input id="landmark" type="text" placeholder="Near…" maxlength="160">
+                </div>
+
+                <div>
+                    <label for="city">City</label>
+                    <input id="city" type="text" placeholder="City" autocomplete="address-level2" required maxlength="80">
+                </div>
+
+                <div>
+                    <label for="pincode">Pincode</label>
+                    <input id="pincode" type="text" placeholder="Pincode" inputmode="numeric" autocomplete="postal-code" required pattern="[0-9]{5,10}" maxlength="10">
+                </div>
+            </div>
+
+            <button class="cart-checkout-btn" type="button" onclick="saveAddress()">Save Address</button>
+        </div>
+    </section>
+</section>
+
+<p id="msg" class="cart-msg"></p>
+
+<script src="nav.js"></script>
+<script src="addresses.js"></script>
+
+</body>
+</html>

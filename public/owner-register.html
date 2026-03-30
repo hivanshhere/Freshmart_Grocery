@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Owner Registration</title>
+	<link rel="stylesheet" href="style.css">
+	<link rel="stylesheet" href="login.css">
+</head>
+<body>
+
+<header>
+	<h1>FreshMart Grocery</h1>
+	<nav>
+		<a href="index.html">Home</a>
+		<a href="cart.html">Cart</a>
+		<a href="login.html">Login</a>
+	</nav>
+</header>
+
+<main class="login-main">
+	<section class="login-card" aria-label="Owner registration form">
+		<div class="login-card__accent" aria-hidden="true"></div>
+		<h2 class="login-title">Register as Store Owner</h2>
+		<p class="login-subtitle">Create your owner account, then your store will be created automatically.</p>
+
+		<form class="login-form" onsubmit="event.preventDefault(); registerOwner();">
+			<label class="login-label" for="name">Name</label>
+			<input type="text" id="name" placeholder="Enter name" autocomplete="name">
+
+			<label class="login-label" for="email">Email</label>
+			<input type="text" id="email" placeholder="Enter email" autocomplete="email" inputmode="email">
+
+			<label class="login-label" for="password">Password</label>
+			<input type="password" id="password" placeholder="Enter password" autocomplete="new-password">
+
+			<label class="login-label" for="storeName">Store Name</label>
+			<input type="text" id="storeName" placeholder="e.g. Sharma Store" autocomplete="organization">
+
+			<button type="submit">Register</button>
+			<p style="margin:8px 0 0; font-size:14px;">
+				Already have an account? <a href="login.html">Login</a>
+			</p>
+			<p id="msg" role="status" aria-live="polite"></p>
+		</form>
+	</section>
+</main>
+
+<script src="owner-register.js"></script>
+</body>
+</html>

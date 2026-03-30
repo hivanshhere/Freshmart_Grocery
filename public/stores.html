@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nearby Grocery Stores</title>
+    <link rel="stylesheet" href="storestyle.css">
+</head>
+<body>
+
+<header class="main-header">
+    <h1>FreshMart Grocery</h1>
+    <nav class="nav-menu">
+        <a href="index.html">Home</a>
+        <a href="cart.html">Cart</a>
+        <a href="login.html">Login</a>
+        <a href="addresses.html" data-nav="addresses" style="display:none;">Addresses</a>
+    </nav>
+</header>
+
+<section class="store-container" id="storeList">
+    <!-- Stores will be loaded here -->
+</section>
+
+<script>
+
+// Login check: only logged-in users can access stores
+(function requireLogin(){
+    const userId = localStorage.getItem("userId");
+    const role = localStorage.getItem("userRole");
+
+    if (!userId) {
+        localStorage.setItem("afterLogin", "stores.html");
+        window.location.href = "login.html";
+        return;
+    }
+
+    // Redirect owner to dashboard
+    if (role === "owner") {
+        window.location.href = "owner-dashboard.html";
+        return;
+    }
+})();
+
+
+// Fetch stores on page load
+window.onload = function () {
+
+    const container = document.getElementById("storeList");
+    if (!container) return;
+
+    fetch("http://localhost:3000/stores")
+    .then(res => res.json())
+    .then(data => {
+
+        if (!data || data.length === 0) {
+            container.innerHTML = "<h2>No stores available</h2>";
+            return;
+        }
+
+        container.innerHTML = "";
+
+        data.forEach(store => {
+
+            let div = document.createElement("div");
+            div.classList.add("store-card");
+
+            div.innerHTML = `
+                <h2 class="store-card__title">${store.store_name}</h2>
+                <p class="store-card__rating">4.2 rating • Nearby</p>
+                <p class="store-card__status">
+                    Delivery: <span class="store-card__statusValue">${store.delivery_available ? "Available" : "Not available"}</span>
+                </p>
+                <p class="store-card__status">
+                    Pickup: <span class="store-card__statusValue">${store.pickup_available ? "Available" : "Not available"}</span>
+                </p>
+                ${store.delivery_available ? `
+                    <p class="store-card__meta">
+                        Delivery fee: ₹${Number(store.delivery_charge || 0)} • Free above ₹${Number(store.min_order_free_delivery || 0)}
+                    </p>
+                ` : ""}
+            `;
+
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.innerText = "View Store";
+            btn.onclick = () => openStore(store.id, store.store_name);
+            div.appendChild(btn);
+
+            container.appendChild(div);
+
+        });
+
+    })
+    .catch(err => {
+        console.log(err);
+        container.innerHTML = "<h2>Error loading stores</h2>";
+    });
+
+};
+
+
+// Open selected store
+function openStore(id, name) {
+
+    // Save store details
+    localStorage.setItem("storeId", id);
+    localStorage.setItem("storeName", name);
+
+    // Redirect with storeId in URL
+    window.location.href = "store-products.html?storeId=" + id;
+}
+
+</script>
+
+<script src="nav.js"></script>
+
+</body>
+</html>

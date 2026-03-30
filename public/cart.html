@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Your Cart</title>
+<link rel="stylesheet" href="cartstyle.css">
+</head>
+<body>
+
+<header class="main-header">
+<h1>Your Cart</h1>
+<nav class="nav-menu">
+<a href="index.html">Home</a>
+<a href="stores.html">Stores</a>
+<a href="addresses.html" data-nav="addresses" style="display:none;">Addresses</a>
+</nav>
+</header>
+
+<section class="cart-container" id="cartItems"></section>
+
+<!-- Checkout preferences (applies to the store you place order for) -->
+<section class="cart-checkout">
+    <h3>Checkout</h3>
+
+    <div class="cart-checkout__row">
+        <label for="deliveryType">Order Type</label>
+        <select id="deliveryType">
+            <option value="delivery">Delivery</option>
+            <option value="pickup">Pickup</option>
+        </select>
+    </div>
+
+    <!-- ADDRESS -->
+    <div id="addressSection" class="cart-checkout__row" style="margin-top:12px;">
+        <label for="addressSelect">Address</label>
+        <select id="addressSelect"></select>
+
+        <button id="deleteAddressBtn" class="cart-delete-btn" type="button" style="display:none;">Delete selected address</button>
+
+        <div id="newAddressForm" class="cart-address-add" style="display:none;">
+            <div class="cart-address-add__title">Add new address</div>
+            <div class="cart-address-add__grid">
+                <div>
+                    <label for="addressType">Type</label>
+                    <select id="addressType">
+                        <option value="Home">Home</option>
+                        <option value="Work">Work</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="customerName">Name</label>
+                    <input id="customerName" type="text" placeholder="Your name" autocomplete="name" required maxlength="100">
+                </div>
+
+                <div>
+                    <label for="phone">Phone</label>
+                    <input id="phone" type="tel" placeholder="Mobile number" autocomplete="tel" required inputmode="numeric" pattern="[0-9]{10}" maxlength="10">
+                </div>
+
+                <div>
+                    <label for="house">House / Flat</label>
+                    <input id="house" type="text" placeholder="House no, flat, building" autocomplete="address-line1" required maxlength="120">
+                </div>
+
+                <div>
+                    <label for="area">Area / Street</label>
+                    <input id="area" type="text" placeholder="Street, area" autocomplete="address-line2" required maxlength="160">
+                </div>
+
+                <div>
+                    <label for="landmark">Landmark (optional)</label>
+                    <input id="landmark" type="text" placeholder="Near…" maxlength="160">
+                </div>
+
+                <div>
+                    <label for="city">City</label>
+                    <input id="city" type="text" placeholder="City" autocomplete="address-level2" required maxlength="80">
+                </div>
+
+                <div>
+                    <label for="pincode">Pincode</label>
+                    <input id="pincode" type="text" placeholder="Pincode" inputmode="numeric" autocomplete="postal-code" required pattern="[0-9]{5,10}" maxlength="10">
+                </div>
+            </div>
+            <button class="cart-checkout-btn" type="button" onclick="saveAddress()">Save Address</button>
+        </div>
+    </div>
+
+    <!-- TIME SLOT -->
+    <div id="slotSection" class="cart-checkout__row" style="margin-top:12px; display:none;">
+        <label for="slotSelect">Pickup Time Slot</label>
+        <select id="slotSelect"></select>
+    </div>
+</section>
+
+<section class="cart-summary">
+    <div class="cart-summary__line">
+        <span>Grand Total</span>
+        <strong id="totalAmount">₹0</strong>
+    </div>
+</section>
+
+<p id="msg" class="cart-msg"></p>
+
+<script src="nav.js"></script>
+<script src="cart.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Store Products</title>
+<link rel="stylesheet" href="storestyle.css">
+</head>
+<body>
+
+<header class="main-header">
+<h1>Store Products</h1>
+<nav class="nav-menu">
+<a href="stores.html">Back to Stores</a>
+<a href="cart.html">Cart</a>
+<a href="addresses.html" data-nav="addresses" style="display:none;">Addresses</a>
+</nav>
+</header>
+
+<section class="store-container store-container--compact">
+	<div class="store-card store-card--info" id="storeInfo">
+		<h2 class="store-card__title">Store Details</h2>
+		<p id="storeInfoName" class="store-info__name"></p>
+		<p id="storeInfoDelivery" class="store-info__line"></p>
+		<p id="storeInfoPickup" class="store-info__line"></p>
+		<p id="storeInfoFee" class="store-info__meta"></p>
+	</div>
+</section>
+
+<section class="store-container" id="productList">
+<!-- Products will come from DB -->
+</section>
+
+<script src="nav.js"></script>
+<script src="store-products.js"></script>
+
+</body>
+</html>

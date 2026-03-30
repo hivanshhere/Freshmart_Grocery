@@ -1,0 +1,292 @@
+/* Owner dashboard: keep same project theme */
+
+.dashboard{
+max-width:980px;
+margin:0 auto;
+padding:30px 16px 50px;
+}
+
+.dashboard-title{
+margin:0 0 18px;
+color:#222;
+}
+
+.dashboard-grid{
+display:grid;
+grid-template-columns:repeat(2, minmax(0, 1fr));
+gap:22px;
+}
+
+.panel-card{
+background:white;
+border-radius:12px;
+box-shadow:0 5px 15px rgba(0,0,0,0.15);
+overflow:hidden;
+}
+
+.panel-card__header{
+padding:16px 18px;
+border-bottom:1px solid rgba(0,0,0,0.08);
+}
+
+.panel-card__header h2{
+margin:0;
+font-size:20px;
+color:#222;
+}
+
+.panel-card__body{
+padding:18px;
+}
+
+/* Make the product list feel consistent inside dashboard */
+.dashboard .store-container{
+padding:0;
+max-width:100%;
+gap:18px;
+}
+
+.dashboard .store-card p{
+margin:8px 0;
+}
+
+.dashboard .store-card button{
+width:100%;
+margin-top:12px;
+}
+
+.form-field{
+display:flex;
+flex-direction:column;
+gap:8px;
+margin-bottom:14px;
+}
+
+.form-field label{
+font-size:14px;
+font-weight:bold;
+color:#222;
+}
+
+.form-field input{
+padding:12px 12px;
+border-radius:8px;
+border:1px solid rgba(0,0,0,0.18);
+outline:none;
+font-size:15px;
+}
+
+.form-field select{
+padding:12px 12px;
+border-radius:8px;
+border:1px solid rgba(0,0,0,0.18);
+outline:none;
+font-size:15px;
+background:white;
+}
+
+.form-field input:focus{
+border-color:#27ae60;
+box-shadow:0 0 0 3px rgba(39,174,96,0.18);
+}
+
+.form-field select:focus{
+border-color:#27ae60;
+box-shadow:0 0 0 3px rgba(39,174,96,0.18);
+}
+
+.form-grid{
+display:grid;
+grid-template-columns:repeat(3, minmax(0, 1fr));
+gap:12px;
+}
+
+.action-btn{
+width:100%;
+background:#27ae60;
+color:white;
+border:none;
+padding:12px 14px;
+border-radius:8px;
+cursor:pointer;
+font-weight:bold;
+font-size:16px;
+transition:all 0.2s ease;
+}
+
+.action-btn:hover{
+background:#219150;
+transform:translateY(-1px);
+box-shadow:0px 8px 18px rgba(0,0,0,0.18);
+}
+
+#msg{
+margin:18px 0 0;
+min-height:18px;
+color:#222;
+}
+
+#msg.msg--success{
+color:#219150;
+font-weight:bold;
+}
+
+#msg.msg--error{
+color:#c0392b;
+font-weight:bold;
+}
+
+/* Delivery settings card improvements (same theme) */
+.delivery-settings{
+display:flex;
+flex-direction:column;
+gap:14px;
+}
+
+.delivery-settings__toggles{
+display:flex;
+flex-direction:column;
+gap:10px;
+padding:12px;
+border:1px solid rgba(0,0,0,0.08);
+border-radius:10px;
+background:#f8fffb;
+}
+
+.toggle-row{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:12px;
+}
+
+.toggle-row label{
+font-weight:bold;
+color:#222;
+}
+
+.toggle-row input[type="checkbox"]{
+width:18px;
+height:18px;
+accent-color:#27ae60;
+}
+
+.delivery-settings__grid{
+display:grid;
+grid-template-columns:repeat(2, minmax(0, 1fr));
+gap:12px;
+}
+
+.help-text{
+margin:-6px 0 0;
+font-size:13px;
+color:rgba(0,0,0,0.65);
+}
+
+/* Pickup slot manager */
+.slot-manager{
+margin-top:16px;
+padding-top:14px;
+border-top:1px solid rgba(0,0,0,0.08);
+}
+
+.slot-manager__title{
+margin:0;
+font-size:16px;
+color:#222;
+}
+
+.slot-manager__add{
+display:grid;
+grid-template-columns:minmax(0, 1fr) auto;
+align-items:end;
+gap:12px;
+margin-top:10px;
+}
+
+.slot-manager__add .form-field{
+flex:1;
+margin-bottom:0 !important;
+min-width:0;
+}
+
+.slot-manager__add .action-btn{
+width:auto;
+min-width:140px;
+white-space:nowrap;
+flex:0 0 auto;
+padding:12px 18px;
+}
+
+.slot-list{
+margin-top:12px;
+display:grid;
+grid-template-columns:repeat(2, minmax(0, 1fr));
+gap:10px;
+}
+
+.slot-row{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:12px;
+padding:10px 12px;
+border:1px solid rgba(0,0,0,0.10);
+border-radius:10px;
+background:#fff;
+}
+
+.slot-row__time{
+font-weight:bold;
+color:#222;
+flex:1;
+}
+
+.slot-row__btn{
+background:#27ae60;
+color:white;
+border:none;
+padding:8px 12px;
+border-radius:8px;
+cursor:pointer;
+font-weight:bold;
+}
+
+.slot-row__btn:hover{
+background:#219150;
+}
+
+@media (max-width: 780px){
+.delivery-settings__grid{
+grid-template-columns:1fr;
+}
+}
+
+@media (max-width: 520px){
+.slot-manager__add{
+grid-template-columns:1fr;
+align-items:stretch;
+}
+
+.slot-manager__add .action-btn{
+width:100%;
+}
+
+.slot-list{
+grid-template-columns:1fr;
+}
+}
+
+@media (max-width: 780px){
+.main-header{
+padding:16px 18px;
+}
+
+.form-grid{
+grid-template-columns:1fr;
+}
+
+.dashboard-grid{
+grid-template-columns:1fr;
+}
+}

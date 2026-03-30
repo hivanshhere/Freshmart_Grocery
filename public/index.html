@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local Grocery Store</title>
+<link rel="stylesheet" href="style.css">
+</head>
+    <body>
+    <header>
+        <h1>FreshMart Grocery</h1>
+
+        <nav>
+            <a href="index.html">Home</a>
+            <!-- <a href="products.html">Products</a> -->
+            <a href="cart.html">Cart</a>
+            <a href="login.html">Login</a>
+        </nav>
+    </header>
+<section class="hero">
+    <h2>Order Groceries From Your Local Store</h2>
+    <p>Fresh products delivered to your doorstep or ready for pickup.</p>
+    <button onclick="localStorage.setItem('afterLogin','stores.html'); location.href='login.html';">Shop Now</button>
+</section>
+<section class="features">
+    <div class="card">
+    <h3>Fresh Products</h3>
+    <p>Daily fresh grocery items available.</p>
+</div>
+<div class="card">
+    <h3>Fast Delivery</h3>
+    <p>Delivery within limited distance.</p>
+</div>
+
+<div class="card">
+    <h3>Store Pickup</h3>
+    <p>Order online and pick up from store.</p>
+</div>
+</section>
+<footer>
+    <p>© 2026 Local Grocery Store</p>
+</footer>
+<script src="nav.js"></script>
+</body>
+</html>
