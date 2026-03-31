@@ -84,16 +84,16 @@ function setStoreUi(store) {
         return;
     }
 
-    storeDisplayNameEl.innerText = store.store_name;
+    storeDisplayNameEl.innerText = String(store.store_name || "").toUpperCase();
     storeDisplayIdEl.innerText = store.id;
     createStoreSectionEl.style.display = "none";
     if (editStoreSectionEl) editStoreSectionEl.style.display = "block";
-    if (editStoreNameInput) editStoreNameInput.value = store.store_name;
+    if (editStoreNameInput) editStoreNameInput.value = String(store.store_name || "").toUpperCase();
     addProductBtn.disabled = false;
     addProductBtn.style.opacity = "1";
 
     localStorage.setItem("storeId", String(store.id));
-    localStorage.setItem("storeName", String(store.store_name));
+    localStorage.setItem("storeName", String(store.store_name || "").toUpperCase());
 
     // Load delivery settings into UI
     if (deliveryAvailableEl) deliveryAvailableEl.checked = !!store.delivery_available;
@@ -108,7 +108,7 @@ async function updateStoreName() {
         return;
     }
 
-    const store_name = (editStoreNameInput?.value || "").trim();
+    const store_name = (editStoreNameInput?.value || "").trim().toUpperCase();
     if (!store_name) {
         setMsg("Enter store name");
         return;
@@ -262,7 +262,7 @@ function renderProducts(products) {
 }
 
 async function createStore() {
-    const store_name = document.getElementById("storeName").value.trim();
+    const store_name = document.getElementById("storeName").value.trim().toUpperCase();
     if (!store_name) {
         setMsg("Enter store name");
         return;
@@ -281,6 +281,27 @@ async function createStore() {
     } catch (e) {
         setMsgError(e.message);
     }
+}
+
+function bindUppercaseInput(inputEl) {
+    if (!inputEl) return;
+    inputEl.addEventListener("input", () => {
+        const start = inputEl.selectionStart;
+        const end = inputEl.selectionEnd;
+        const next = String(inputEl.value || "").toUpperCase();
+        if (inputEl.value !== next) inputEl.value = next;
+        if (typeof start === "number" && typeof end === "number") {
+            inputEl.setSelectionRange(start, end);
+        }
+    });
+}
+
+// Auto-uppercase store name fields (create + edit)
+try {
+    bindUppercaseInput(document.getElementById("storeName"));
+    bindUppercaseInput(document.getElementById("editStoreName"));
+} catch {
+    // ignore
 }
 
 async function addProduct() {

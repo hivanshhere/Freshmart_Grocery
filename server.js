@@ -223,6 +223,9 @@ app.post("/auth/register-owner", asyncHandler(async (req, res) => {
     const { name, email, password, store_name } = req.body || {};
     if (!name || !email || !password || !store_name) return res.status(400).json({ message: "Missing fields" });
 
+    const storeNameCaps = String(store_name).trim().toUpperCase();
+    if (!storeNameCaps) return res.status(400).json({ message: "Missing fields" });
+
     try {
         const [userResult] = await dbp.query(
             "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'owner')",
@@ -232,13 +235,13 @@ app.post("/auth/register-owner", asyncHandler(async (req, res) => {
         const ownerId = userResult.insertId;
         const [storeResult] = await dbp.query(
             "INSERT INTO stores (owner_id, store_name, delivery_available, delivery_charge, min_order_free_delivery, pickup_available) VALUES (?, ?, 0, 0, 0, 1)",
-            [ownerId, store_name]
+            [ownerId, storeNameCaps]
         );
 
         const store = {
             id: storeResult.insertId,
             owner_id: ownerId,
-            store_name,
+            store_name: storeNameCaps,
             delivery_available: 0,
             delivery_charge: 0,
             min_order_free_delivery: 0,
@@ -334,25 +337,31 @@ app.post("/owner/store", requireAuth, requireOwner, asyncHandler(async (req, res
     const { store_name } = req.body || {};
     if (!store_name) return res.status(400).json({ message: "Store name required" });
 
+    const storeNameCaps = String(store_name).trim().toUpperCase();
+    if (!storeNameCaps) return res.status(400).json({ message: "Store name required" });
+
     const existing = await getOwnerStore(req.auth.user.id);
     if (existing) return res.status(409).json({ message: "Store already exists" });
 
     const [result] = await dbp.query(
         "INSERT INTO stores (owner_id, store_name, delivery_available, delivery_charge, min_order_free_delivery, pickup_available) VALUES (?, ?, 0, 0, 0, 1)",
-        [req.auth.user.id, store_name]
+        [req.auth.user.id, storeNameCaps]
     );
     const store = await getOwnerStore(req.auth.user.id);
-    res.json({ message: "Store created", store: store || { id: result.insertId, store_name } });
+    res.json({ message: "Store created", store: store || { id: result.insertId, store_name: storeNameCaps } });
 }));
 
 app.patch("/owner/store", requireAuth, requireOwner, asyncHandler(async (req, res) => {
     const { store_name } = req.body || {};
     if (!store_name) return res.status(400).json({ message: "Store name required" });
 
+    const storeNameCaps = String(store_name).trim().toUpperCase();
+    if (!storeNameCaps) return res.status(400).json({ message: "Store name required" });
+
     const store = await getOwnerStore(req.auth.user.id);
     if (!store) return res.status(404).json({ message: "Store not found" });
 
-    await dbp.query("UPDATE stores SET store_name=? WHERE owner_id=?", [store_name, req.auth.user.id]);
+    await dbp.query("UPDATE stores SET store_name=? WHERE owner_id=?", [storeNameCaps, req.auth.user.id]);
     const updated = await getOwnerStore(req.auth.user.id);
     res.json({ message: "Store updated", store: updated });
 }));

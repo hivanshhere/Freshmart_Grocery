@@ -63,7 +63,7 @@ function registerUser(){
 	const name=document.getElementById("name").value.trim();
 	const email=document.getElementById("email").value.trim();
 	const password=document.getElementById("password").value.trim();
-	const store_name=document.getElementById("storeName").value.trim();
+	const store_name=document.getElementById("storeName").value.trim().toUpperCase();
 
 	const endpoint = role==="owner" ? "http://localhost:3000/auth/register-owner" : "http://localhost:3000/auth/register-customer";
 	const payload = role==="owner" ? {name,email,password,store_name} : {name,email,password};
@@ -114,6 +114,23 @@ function registerUser(){
 		console.log(e);
 	});
 }
+
+// Auto-uppercase store name while typing (owner only)
+(function initStoreNameUppercase(){
+	try{
+		const el=document.getElementById("storeName");
+		if(!el) return;
+		el.addEventListener("input",()=>{
+			const start=el.selectionStart;
+			const end=el.selectionEnd;
+			const next=String(el.value||"").toUpperCase();
+			if(el.value!==next) el.value=next;
+			if(typeof start==="number" && typeof end==="number"){
+				el.setSelectionRange(start,end);
+			}
+		});
+	}catch{}
+})();
 
 // Init
 onRoleChange();
