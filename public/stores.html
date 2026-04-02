@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nearby Grocery Stores</title>
     <link rel="stylesheet" href="storestyle.css">
 </head>
@@ -16,9 +17,16 @@
     </nav>
 </header>
 
-<section class="store-container" id="storeList">
-    <!-- Stores will be loaded here -->
-</section>
+<main class="stores-page">
+    <section class="stores-hero">
+        <h2>Nearby Grocery Stores</h2>
+        <p>Browse nearby stores, compare delivery and pickup availability, and open the one you want to shop from.</p>
+    </section>
+
+    <section class="store-container stores-grid" id="storeList">
+        <!-- Stores will be loaded here -->
+    </section>
+</main>
 
 <script>
 
@@ -52,7 +60,12 @@ window.onload = function () {
     .then(data => {
 
         if (!data || data.length === 0) {
-            container.innerHTML = "<h2>No stores available</h2>";
+            container.innerHTML = `
+                <div class="store-card store-card--empty">
+                    <h2>No stores available</h2>
+                    <p>Check back soon. New stores will appear here once they are added.</p>
+                </div>
+            `;
             return;
         }
 
@@ -66,12 +79,10 @@ window.onload = function () {
             div.innerHTML = `
                 <h2 class="store-card__title">${store.store_name}</h2>
                 <p class="store-card__rating">4.2 rating • Nearby</p>
-                <p class="store-card__status">
-                    Delivery: <span class="store-card__statusValue">${store.delivery_available ? "Available" : "Not available"}</span>
-                </p>
-                <p class="store-card__status">
-                    Pickup: <span class="store-card__statusValue">${store.pickup_available ? "Available" : "Not available"}</span>
-                </p>
+                <div class="store-card__badges">
+                    <span class="store-badge ${store.delivery_available ? "store-badge--on" : "store-badge--off"}">Delivery ${store.delivery_available ? "On" : "Off"}</span>
+                    <span class="store-badge ${store.pickup_available ? "store-badge--on" : "store-badge--off"}">Pickup ${store.pickup_available ? "On" : "Off"}</span>
+                </div>
                 ${store.delivery_available ? `
                     <p class="store-card__meta">
                         Delivery fee: ₹${Number(store.delivery_charge || 0)} • Free above ₹${Number(store.min_order_free_delivery || 0)}
@@ -82,6 +93,7 @@ window.onload = function () {
             const btn = document.createElement("button");
             btn.type = "button";
             btn.innerText = "View Store";
+            btn.classList.add("store-card__button");
             btn.onclick = () => openStore(store.id, store.store_name);
             div.appendChild(btn);
 
@@ -92,7 +104,12 @@ window.onload = function () {
     })
     .catch(err => {
         console.log(err);
-        container.innerHTML = "<h2>Error loading stores</h2>";
+        container.innerHTML = `
+            <div class="store-card store-card--empty">
+                <h2>Error loading stores</h2>
+                <p>Please refresh the page and try again.</p>
+            </div>
+        `;
     });
 
 };

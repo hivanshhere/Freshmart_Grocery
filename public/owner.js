@@ -27,26 +27,49 @@ const pickupAvailableEl = document.getElementById("pickupAvailable");
 const slotTimeInputEl = document.getElementById("slotTimeInput");
 const slotListEl = document.getElementById("slotList");
 
+const addProductFieldErrors = {
+    name: document.getElementById("pnameError"),
+    description: document.getElementById("pdescriptionError"),
+    price: document.getElementById("ppriceError"),
+    quantity: document.getElementById("pquantityError"),
+    unit: document.getElementById("punitError")
+};
+
 let currentStore = null;
+
+function clearAddProductErrors() {
+    Object.values(addProductFieldErrors).forEach(el => {
+        if (el) el.innerText = "";
+    });
+}
+
+function setAddProductError(field, message) {
+    clearAddProductErrors();
+    const el = addProductFieldErrors[field];
+    if (el) el.innerText = message || "";
+}
 
 function setMsg(text) {
     if (!msgEl) return;
     msgEl.innerText = text || "";
-    msgEl.classList.remove("msg--success", "msg--error");
+    msgEl.classList.remove("msg--success");
+    msgEl.classList.add("msg--error");
 }
 
 function setMsgSuccess(text) {
     if (!msgEl) return;
-    msgEl.innerText = text || "";
+    msgEl.innerText = "";
     msgEl.classList.remove("msg--error");
     msgEl.classList.add("msg--success");
+    if (text) alert(text);
 }
 
 function setMsgError(text) {
     if (!msgEl) return;
-    msgEl.innerText = text || "";
+    msgEl.innerText = "";
     msgEl.classList.remove("msg--success");
     msgEl.classList.add("msg--error");
+    if (text) alert(text);
 }
 
 function authHeaders() {
@@ -96,10 +119,13 @@ function setStoreUi(store) {
     localStorage.setItem("storeName", String(store.store_name || "").toUpperCase());
 
     // Load delivery settings into UI
-    if (deliveryAvailableEl) deliveryAvailableEl.checked = !!store.delivery_available;
+    if (deliveryAvailableEl && pickupAvailableEl) {
+        const deliverySelected = !!store.delivery_available || !store.pickup_available;
+        deliveryAvailableEl.checked = deliverySelected;
+        pickupAvailableEl.checked = !deliverySelected;
+    }
     if (deliveryChargeEl) deliveryChargeEl.value = store.delivery_charge ?? 0;
     if (minOrderEl) minOrderEl.value = store.min_order_free_delivery ?? 0;
-    if (pickupAvailableEl) pickupAvailableEl.checked = !!store.pickup_available;
 }
 
 async function updateStoreName() {
@@ -245,16 +271,19 @@ function renderProducts(products) {
     ownerProductListEl.innerHTML = "";
     products.forEach(p => {
         const quantity = (p.quantity === undefined || p.quantity === null || p.quantity === "") ? 1 : p.quantity;
-        const unit = p.unit || "piece";
+        const unit = String(p.unit || "").trim();
+        const description = String(p.description || "").trim();
         const priceNum = Number(p.price);
         const priceText = Number.isFinite(priceNum) ? priceNum.toFixed(2) : String(p.price ?? "");
+        const unitText = unit ? ` / ${quantity} ${unit}` : ` / ${quantity}`;
 
         const div = document.createElement("div");
         div.className = "store-card";
         div.innerHTML = `
             <h3>${p.name}</h3>
-            <p>Price: ₹${priceText} / ${quantity} ${unit}</p>
-            <button type="button">Remove</button>
+            ${description ? `<p class="product-description">${description}</p>` : ""}
+            <p>Price: ₹${priceText}${unitText}</p>
+            <button type="button" class="store-card__remove-btn">Remove</button>
         `;
         div.querySelector("button").onclick = () => removeProduct(p.id);
         ownerProductListEl.appendChild(div);
@@ -310,16 +339,50 @@ async function addProduct() {
         return;
     }
 
+    clearAddProductErrors();
+
     const name = document.getElementById("pname").value.trim();
+    const description = document.getElementById("pdescription").value.trim();
     const priceRaw = document.getElementById("pprice").value;
     const quantityRaw = document.getElementById("pquantity").value;
     const unit = document.getElementById("punit").value;
 
     const price = Number(priceRaw);
     const quantity = Number(quantityRaw);
+    const allowedUnits = ["kg", "g", "litre", "ml", "piece", "pack"];
 
-    if (!name || !Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity <= 0 || !unit) {
-        setMsg("Enter product name, valid price, quantity and unit");
+    if (!name) {
+        setAddProductError("name", "Enter product name");
+        return;
+    }
+
+    if (name.length < 2) {
+        setAddProductError("name", "Product name should be at least 2 letters");
+        return;
+    }
+
+    if (!description) {
+        setAddProductError("description", "Enter product description");
+        return;
+    }
+
+    if (description.length < 5) {
+        setAddProductError("description", "Description should be at least 5 characters");
+        return;
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+        setAddProductError("price", "Enter a valid price greater than 0");
+        return;
+    }
+
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+        setAddProductError("quantity", "Enter a valid quantity greater than 0");
+        return;
+    }
+
+    if (!unit || !allowedUnits.includes(unit)) {
+        setAddProductError("unit", "Select a valid unit");
         return;
     }
 
@@ -327,13 +390,15 @@ async function addProduct() {
         const data = await fetchJson(`${API_BASE}/owner/products`, {
             method: "POST",
             headers: authHeaders(),
-            body: JSON.stringify({ name, price, quantity, unit })
+            body: JSON.stringify({ name, description, price, quantity, unit })
         });
         setMsgSuccess(data.message);
         document.getElementById("pname").value = "";
+        document.getElementById("pdescription").value = "";
         document.getElementById("pprice").value = "";
         document.getElementById("pquantity").value = "";
         document.getElementById("punit").value = "kg";
+        clearAddProductErrors();
         await loadStoreAndProducts({ preserveMsg: true });
     } catch (e) {
         setMsgError(e.message);
@@ -346,11 +411,12 @@ async function saveDeliverySettings() {
         return;
     }
 
+    const deliverySelected = !!deliveryAvailableEl?.checked;
     const payload = {
-        delivery_available: !!deliveryAvailableEl?.checked,
+        delivery_available: deliverySelected,
         delivery_charge: Number(deliveryChargeEl?.value) || 0,
         min_order: Number(minOrderEl?.value) || 0,
-        pickup_available: !!pickupAvailableEl?.checked
+        pickup_available: !deliverySelected
     };
 
     try {

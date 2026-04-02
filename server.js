@@ -105,9 +105,12 @@ async function initDb() {
             name VARCHAR(100) NOT NULL,
             price DECIMAL(10,2) NOT NULL,
             quantity DECIMAL(10,2) NOT NULL,
-            unit VARCHAR(20) NOT NULL
+            unit VARCHAR(20) NOT NULL,
+            description VARCHAR(255) DEFAULT ''
         )
     `);
+
+    try { await dbp.query("ALTER TABLE products ADD COLUMN description VARCHAR(255) DEFAULT ''"); } catch {}
 
     await dbp.query(`
         CREATE TABLE IF NOT EXISTS orders (
@@ -311,7 +314,7 @@ app.get("/products/:storeId", asyncHandler(async (req, res) => {
     if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
 
     const [rows] = await dbp.query(
-        "SELECT id, store_id, name, price, quantity, unit FROM products WHERE store_id=? ORDER BY id DESC",
+        "SELECT id, store_id, name, price, quantity, unit, description FROM products WHERE store_id=? ORDER BY id DESC",
         [storeId]
     );
     res.json(rows);
@@ -371,15 +374,20 @@ app.get("/owner/products", requireAuth, requireOwner, asyncHandler(async (req, r
     if (!store) return res.json({ products: [] });
 
     const [rows] = await dbp.query(
-        "SELECT id, store_id, name, price, quantity, unit FROM products WHERE store_id=? ORDER BY id DESC",
+        "SELECT id, store_id, name, price, quantity, unit, description FROM products WHERE store_id=? ORDER BY id DESC",
         [store.id]
     );
     res.json({ products: rows });
 }));
 
 app.post("/owner/products", requireAuth, requireOwner, asyncHandler(async (req, res) => {
-    const { name, price, quantity, unit } = req.body || {};
-    if (!name || price === undefined || quantity === undefined || !unit) {
+    const { name, price, quantity, unit, description } = req.body || {};
+    if (!name || price === undefined || quantity === undefined || !unit || !description) {
+        return res.status(400).json({ message: "Missing fields" });
+    }
+
+    const descriptionText = String(description).trim();
+    if (!descriptionText) {
         return res.status(400).json({ message: "Missing fields" });
     }
 
@@ -387,8 +395,8 @@ app.post("/owner/products", requireAuth, requireOwner, asyncHandler(async (req, 
     if (!store) return res.status(400).json({ message: "Create a store first" });
 
     await dbp.query(
-        "INSERT INTO products (store_id, name, price, quantity, unit) VALUES (?, ?, ?, ?, ?)",
-        [store.id, name, price, quantity, unit]
+        "INSERT INTO products (store_id, name, price, quantity, unit, description) VALUES (?, ?, ?, ?, ?, ?)",
+        [store.id, name, price, quantity, unit, descriptionText]
     );
     res.json({ message: "Product added" });
 }));

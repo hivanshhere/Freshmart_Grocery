@@ -141,15 +141,18 @@ function renderProducts(products) {
     ownerProductListEl.innerHTML = "";
     products.forEach(p => {
         const quantity = (p.quantity === undefined || p.quantity === null || p.quantity === "") ? 1 : p.quantity;
-        const unit = p.unit || "piece";
+        const unit = String(p.unit || "").trim();
+        const description = String(p.description || "").trim();
         const priceNum = Number(p.price);
         const priceText = Number.isFinite(priceNum) ? priceNum.toFixed(2) : String(p.price ?? "");
+        const unitText = unit ? ` / ${quantity} ${unit}` : ` / ${quantity}`;
 
         const div = document.createElement("div");
         div.className = "store-card";
         div.innerHTML = `
             <h3>${p.name}</h3>
-            <p>Price: ₹${priceText} / ${quantity} ${unit}</p>
+            ${description ? `<p class="product-description">${description}</p>` : ""}
+            <p>Price: ₹${priceText}${unitText}</p>
             <button type="button">Remove</button>
         `;
         div.querySelector("button").onclick = () => removeProduct(p.id);

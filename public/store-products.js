@@ -22,7 +22,8 @@ function saveCartData(carts) {
 }
 
 function buildPriceText(price, quantity, unit) {
-    return `₹${price} / ${quantity} ${unit}`;
+    const unitText = unit ? ` ${unit}` : "";
+    return `₹${price} / ${quantity}${unitText}`;
 }
 
 function buildItemKey(name, priceText) {
@@ -92,7 +93,8 @@ function updateStepperUi(stepperEl, itemKey) {
 function createProductCard(product) {
     const name = product.name;
     const quantity = product.quantity || 1;
-    const unit = product.unit || "piece";
+    const unit = String(product.unit || "").trim();
+    const description = String(product.description || "").trim();
     const priceText = buildPriceText(product.price, quantity, unit);
     const itemKey = buildItemKey(name, priceText);
 
@@ -104,6 +106,8 @@ function createProductCard(product) {
             <h3 class="product-card__name">${name}</h3>
             <p class="product-card__price">${priceText}</p>
         </div>
+
+        ${description ? `<p class="product-card__description">${description}</p>` : ""}
 
         <div class="product-card__actions">
             <button type="button" class="add-to-cart-btn">Add to Cart</button>

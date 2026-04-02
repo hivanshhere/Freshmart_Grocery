@@ -56,21 +56,30 @@
 				<div class="panel-card__body">
 						<div class="form-field">
 							<label for="pname">Product Name</label>
-							<input type="text" id="pname" placeholder="e.g., Milk, Rice, Sugar" autocomplete="off">
+							<input type="text" id="pname" placeholder="e.g., Milk, Rice, Sugar" autocomplete="off" maxlength="40" required>
+							<div class="field-error" id="pnameError"></div>
+						</div>
+
+						<div class="form-field">
+							<label for="pdescription">Product Description</label>
+							<textarea id="pdescription" placeholder="e.g., Fresh Vegetables for healthy eating" maxlength="120" rows="3" required></textarea>
+							<div class="field-error" id="pdescriptionError"></div>
 						</div>
 
 						<div class="form-grid">
 							<div class="form-field">
 								<label for="pprice">Price (₹)</label>
-								<input type="number" id="pprice" placeholder="e.g., 60" min="0" step="0.01">
+								<input type="number" id="pprice" placeholder="e.g., 60" min="0.01" step="0.01" required>
+								<div class="field-error" id="ppriceError"></div>
 							</div>
 							<div class="form-field">
 								<label for="pquantity">Quantity</label>
-								<input type="number" id="pquantity" placeholder="e.g., 1" min="0.01" step="0.01">
+								<input type="number" id="pquantity" placeholder="e.g., 1" min="0.01" step="0.01" required>
+								<div class="field-error" id="pquantityError"></div>
 							</div>
 							<div class="form-field">
 								<label for="punit">Unit</label>
-								<select id="punit">
+								<select id="punit" required>
 									<option value="kg">Kg</option>
 									<option value="g">Gram</option>
 									<option value="litre">Litre</option>
@@ -78,6 +87,7 @@
 									<option value="piece">Piece</option>
 									<option value="pack">Pack</option>
 								</select>
+								<div class="field-error" id="punitError"></div>
 							</div>
 						</div>
 
@@ -86,37 +96,39 @@
 			</div>
 
 			<!-- 🔥 NEW: DELIVERY SETTINGS -->
-			<div class="panel-card">
+			<div class="panel-card delivery-panel">
 				<div class="panel-card__header">
 					<h2>Delivery Settings</h2>
 					<p class="help-text" style="margin:8px 0 0;">These settings are shown to customers during checkout.</p>
 				</div>
 				<div class="panel-card__body">
 					<div class="delivery-settings">
-						<div class="delivery-settings__toggles">
-							<div class="toggle-row">
-								<label for="deliveryAvailable">Delivery Available</label>
-								<input type="checkbox" id="deliveryAvailable">
+						<div class="delivery-settings__row">
+							<div class="delivery-settings__toggles">
+								<label class="option-chip" for="deliveryAvailable">
+									<input type="radio" id="deliveryAvailable" name="fulfillmentMethod" value="delivery" checked>
+									<span>Delivery Available</span>
+								</label>
+								<label class="option-chip" for="pickupAvailable">
+									<input type="radio" id="pickupAvailable" name="fulfillmentMethod" value="pickup">
+									<span>Pickup Available</span>
+								</label>
 							</div>
-							<div class="toggle-row">
-								<label for="pickupAvailable">Pickup Available</label>
-								<input type="checkbox" id="pickupAvailable" checked>
-							</div>
-						</div>
 
-						<div class="delivery-settings__grid">
-							<div class="form-field">
-								<label for="deliveryCharge">Delivery Charge (₹)</label>
-								<input type="number" id="deliveryCharge" placeholder="e.g., 10" min="0" step="1">
+							<div class="delivery-settings__grid">
+								<div class="form-field">
+									<label for="deliveryCharge">Delivery Charge (₹)</label>
+									<input type="number" id="deliveryCharge" placeholder="e.g., 10" min="0" step="1">
+								</div>
+								<div class="form-field">
+									<label for="minOrder">Free Delivery above (₹)</label>
+									<input type="number" id="minOrder" placeholder="e.g., 200" min="0" step="1">
+									<p class="help-text">If order total is below this, delivery charge applies.</p>
+								</div>
 							</div>
-							<div class="form-field">
-								<label for="minOrder">Free Delivery above (₹)</label>
-								<input type="number" id="minOrder" placeholder="e.g., 200" min="0" step="1">
-								<p class="help-text">If order total is below this, delivery charge applies.</p>
-							</div>
-						</div>
 
-						<button class="action-btn" onclick="saveDeliverySettings()">Save Settings</button>
+							<button class="action-btn delivery-settings__save" type="button" onclick="saveDeliverySettings()">Save Settings</button>
+						</div>
 
 						<div class="slot-manager">
 							<h3 class="slot-manager__title">Pickup Time Slots</h3>

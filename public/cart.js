@@ -384,7 +384,7 @@ function normalizeStoreItems(storeData) {
                 price: it.price,
                 qty: Number(it.qty) || 0,
                 quantity: it.quantity || 1,
-                unit: it.unit || "piece"
+                unit: String(it.unit || "").trim()
             }
         }).filter(it => it.qty > 0)
     }
