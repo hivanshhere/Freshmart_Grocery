@@ -5,16 +5,25 @@
         const token = localStorage.getItem("authToken");
         const showAddresses = role === "customer" && !!token;
         const showCustomerOrders = role === "customer" && !!token;
+        const showOwnerDashboard = role === "owner" && !!token;
+        const showAdminDashboard = role === "admin" && !!token;
 
         const isLoggedIn = !!token;
 
         document.querySelectorAll('[data-nav="addresses"]').forEach((el) => {
-            // Use CSS-defined display (inline-flex) for consistent pill styling
             el.style.display = showAddresses ? "" : "none";
         });
 
         document.querySelectorAll('[data-nav="customer-orders"]').forEach((el) => {
             el.style.display = showCustomerOrders ? "" : "none";
+        });
+
+        document.querySelectorAll('[data-nav="owner-dashboard"]').forEach((el) => {
+            el.style.display = showOwnerDashboard ? "" : "none";
+        });
+
+        document.querySelectorAll('[data-nav="admin-dashboard"]').forEach((el) => {
+            el.style.display = showAdminDashboard ? "" : "none";
         });
 
         document.querySelectorAll('[data-nav="logout"]').forEach((el) => {
@@ -27,19 +36,15 @@
                         headers: token ? { "Authorization": `Bearer ${token}` } : {}
                     });
                 } catch {
-                    // ignore
                 }
                 localStorage.clear();
                 window.location.href = "login.html";
             });
         });
 
-        // Hide Login link once authenticated
         document.querySelectorAll('a[href="login.html"]').forEach((el) => {
-            // Use CSS-defined display for consistent styling
             el.style.display = isLoggedIn ? "none" : "";
         });
     } catch {
-        // ignore
     }
 })();

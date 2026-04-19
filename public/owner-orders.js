@@ -14,6 +14,38 @@ const listEl = document.getElementById("ownerOrdersList");
 const logoutBtn = document.getElementById("ownerLogoutBtn");
 
 let currentStore = null;
+const ownerReportDrafts = {};
+
+function isOwnerReportEditing() {
+    const active = document.activeElement;
+    return !!active && active.closest(".report-form");
+}
+
+function captureOwnerReportDrafts() {
+    if (!listEl) return;
+    listEl.querySelectorAll(".report-form").forEach((formEl) => {
+        const orderId = formEl.getAttribute("data-order-id");
+        if (!orderId) return;
+
+        const typeEl = formEl.querySelector("[data-field='type']");
+        const ratingEl = formEl.querySelector("[data-field='rating']");
+        const messageEl = formEl.querySelector("[data-field='message']");
+
+        ownerReportDrafts[orderId] = {
+            reportType: String(typeEl?.value || "complaint"),
+            rating: String(ratingEl?.value || ""),
+            message: String(messageEl?.value || "")
+        };
+    });
+}
+
+function getOwnerReportDraft(orderId) {
+    return ownerReportDrafts[String(orderId)] || {
+        reportType: "complaint",
+        rating: "",
+        message: ""
+    };
+}
 
 function escapeHtml(value) {
     return String(value ?? "")
@@ -83,6 +115,8 @@ function renderSummary(orders) {
 
 function renderOrders(orders) {
     if (!listEl) return;
+    captureOwnerReportDrafts();
+
     if (!orders.length) {
         listEl.innerHTML = `<div class="orders-empty">No orders yet. New customer orders will appear here.</div>`;
         return;
@@ -90,6 +124,7 @@ function renderOrders(orders) {
 
     listEl.innerHTML = orders.map(order => {
         const visibleOrderNumber = Number(order.display_order_number) || Number(order.id) || 0;
+        const draft = getOwnerReportDraft(order.id);
         const itemsHtml = (order.items || []).length
             ? order.items.map(item => `
                 <div class="order-item">
@@ -129,6 +164,19 @@ function renderOrders(orders) {
                     <button type="button" class="orders-btn orders-btn--ghost" onclick="updateOrderStatus(${order.id}, 'rejected')">Reject</button>
                     <button type="button" class="orders-btn orders-btn--danger" onclick="deleteOrder(${order.id})">Delete</button>
                 </div>
+
+                <div class="order-card__section">
+                    <span>Customer Review / Complaint To Admin</span>
+                    <div class="report-form" data-order-id="${order.id}">
+                        <select id="ownerReportType-${order.id}" class="report-form__input" data-field="type">
+                            <option value="complaint" ${draft.reportType === "complaint" ? "selected" : ""}>Complaint</option>
+                            <option value="review" ${draft.reportType === "review" ? "selected" : ""}>Review</option>
+                        </select>
+                        <input id="ownerReportRating-${order.id}" class="report-form__input" data-field="rating" type="number" min="1" max="5" placeholder="Rating (1-5 for review)" value="${escapeHtml(draft.rating)}">
+                        <textarea id="ownerReportMessage-${order.id}" class="report-form__input report-form__textarea" data-field="message" placeholder="Explain the customer behaviour for the admin">${escapeHtml(draft.message)}</textarea>
+                        <button type="button" class="orders-btn orders-btn--ghost" onclick="submitOwnerReport(${order.id}, ${Number(order.customer_user_id) || 0})">Send To Admin</button>
+                    </div>
+                </div>
             </article>
         `;
     }).join("");
@@ -152,7 +200,6 @@ async function checkNewOrderNotifications(storeId) {
 
 async function loadOrders() {
     try {
-        showFeedback("", "success");
         currentStore = await fetchJson(`${API_BASE}/owner/store`, {
             method: "GET",
             headers: { "Authorization": `Bearer ${ownerToken}` }
@@ -167,7 +214,9 @@ async function loadOrders() {
         ]);
 
         renderSummary(Array.isArray(orders) ? orders : []);
-        renderOrders(Array.isArray(orders) ? orders : []);
+        if (!isOwnerReportEditing()) {
+            renderOrders(Array.isArray(orders) ? orders : []);
+        }
     } catch (e) {
         if (summaryEl) summaryEl.innerHTML = "";
         if (listEl) listEl.innerHTML = `<div class="orders-empty">${escapeHtml(e.message)}</div>`;
@@ -208,6 +257,58 @@ async function deleteOrder(orderId) {
     }
 }
 
+async function submitOwnerReport(orderId, targetUserId) {
+    if (!targetUserId) {
+        showFeedback("This older order does not have enough customer data for reporting.", "error");
+        return;
+    }
+
+    const typeEl = document.getElementById(`ownerReportType-${orderId}`);
+    const ratingEl = document.getElementById(`ownerReportRating-${orderId}`);
+    const messageEl = document.getElementById(`ownerReportMessage-${orderId}`);
+
+    const reportType = String(typeEl?.value || "complaint");
+    const rating = String(ratingEl?.value || "").trim();
+    const message = String(messageEl?.value || "").trim();
+
+    if (!message) {
+        showFeedback("Please enter report details before sending them to the admin.", "error");
+        return;
+    }
+
+    if (reportType === "review" && (!rating || Number(rating) < 1 || Number(rating) > 5)) {
+        showFeedback("Please enter a rating between 1 and 5 for a review.", "error");
+        return;
+    }
+
+    try {
+        const payload = {
+            order_id: orderId,
+            target_user_id: targetUserId,
+            report_type: reportType,
+            message
+        };
+        if (reportType === "review") payload.rating = Number(rating);
+
+        const res = await fetchJson(`${API_BASE}/reports`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${ownerToken}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        delete ownerReportDrafts[String(orderId)];
+        if (ratingEl) ratingEl.value = "";
+        if (messageEl) messageEl.value = "";
+        showFeedback(res?.message || "Your report was sent to the admin.", "success");
+        window.alert(res?.message || "Your report was sent to the admin.");
+    } catch (e) {
+        showFeedback(e.message, "error");
+    }
+}
+
 async function logoutOwner() {
     try {
         await fetch(`${API_BASE}/auth/logout`, {
@@ -228,8 +329,23 @@ if (logoutBtn) {
     });
 }
 
+if (listEl) {
+    listEl.addEventListener("input", (event) => {
+        const formEl = event.target.closest(".report-form");
+        if (!formEl) return;
+        const orderId = formEl.getAttribute("data-order-id");
+        if (!orderId) return;
+
+        ownerReportDrafts[orderId] = {
+            reportType: String(formEl.querySelector("[data-field='type']")?.value || "complaint"),
+            rating: String(formEl.querySelector("[data-field='rating']")?.value || ""),
+            message: String(formEl.querySelector("[data-field='message']")?.value || "")
+        };
+    });
+}
+
 window.updateOrderStatus = updateOrderStatus;
 window.deleteOrder = deleteOrder;
+window.submitOwnerReport = submitOwnerReport;
 
 loadOrders();
-setInterval(loadOrders, 10000);

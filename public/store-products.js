@@ -1,4 +1,11 @@
-// storeId localStorage se lena
+const currentRole = localStorage.getItem("userRole");
+if (currentRole === "owner") {
+    window.location.href = "owner-dashboard.html";
+}
+if (currentRole === "admin") {
+    window.location.href = "admin-dashboard.html";
+}
+
 const storeId = localStorage.getItem("storeId");
 
 if (!storeId) {

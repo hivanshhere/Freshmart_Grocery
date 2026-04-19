@@ -27,6 +27,10 @@ const DB_USER = process.env.DB_USER;
 const DB_PASSWORD = process.env.DB_PASSWORD;
 const DB_NAME = process.env.DB_NAME;
 
+const ADMIN_EMAIL = String(process.env.ADMIN_EMAIL || "admin@freshmart.com").trim().toLowerCase();
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "admin123").trim();
+const ADMIN_NAME = String(process.env.ADMIN_NAME || "Platform Admin").trim();
+
 let db;
 let dbp;
 
@@ -48,9 +52,7 @@ const upload = multer({
 });
 
 function asyncHandler(fn) {
-    return (req, res, next) => {
-        Promise.resolve(fn(req, res, next)).catch(next);
-    };
+    return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
 function userDto(row) {
@@ -59,12 +61,30 @@ function userDto(row) {
         id: row.id,
         name: row.name,
         email: row.email,
-        role: row.role
+        role: row.role,
+        account_status: row.account_status || "active",
+        warning_count: Number(row.warning_count) || 0,
+        ban_reason: row.ban_reason || ""
     };
 }
 
 function newToken() {
     return crypto.randomBytes(32).toString("hex");
+}
+
+function normalizeAccountStatus(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (["active", "warned", "banned", "removed"].includes(normalized)) return normalized;
+    return "active";
+}
+
+function canUsePlatform(accountStatus) {
+    return !["banned", "removed"].includes(normalizeAccountStatus(accountStatus));
+}
+
+function formatCurrency(value) {
+    const amount = Number(value) || 0;
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
 }
 
 async function ensureDatabaseExists() {
@@ -92,6 +112,22 @@ function initPool() {
     dbp = db.promise();
 }
 
+async function ensureAdminAccount() {
+    const [rows] = await dbp.query("SELECT id FROM users WHERE email = ? LIMIT 1", [ADMIN_EMAIL]);
+    if (rows[0]) {
+        await dbp.query(
+            "UPDATE users SET role = 'admin', account_status = 'active' WHERE id = ?",
+            [rows[0].id]
+        );
+        return;
+    }
+
+    await dbp.query(
+        "INSERT INTO users (name, email, password, role, account_status, warning_count, ban_reason) VALUES (?, ?, ?, 'admin', 'active', 0, '')",
+        [ADMIN_NAME, ADMIN_EMAIL, ADMIN_PASSWORD]
+    );
+}
+
 async function initDb() {
     await dbp.query(`
         CREATE TABLE IF NOT EXISTS users (
@@ -99,7 +135,11 @@ async function initDb() {
             name VARCHAR(100) NOT NULL,
             email VARCHAR(100) NOT NULL,
             password VARCHAR(100) NOT NULL,
-            role VARCHAR(20) NOT NULL
+            role VARCHAR(20) NOT NULL,
+            account_status VARCHAR(20) NOT NULL DEFAULT 'active',
+            warning_count INT NOT NULL DEFAULT 0,
+            ban_reason VARCHAR(255) DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     `);
 
@@ -136,9 +176,6 @@ async function initDb() {
         )
     `);
 
-    try { await dbp.query("ALTER TABLE products ADD COLUMN description VARCHAR(255) DEFAULT ''"); } catch {}
-    try { await dbp.query("ALTER TABLE products ADD COLUMN image VARCHAR(255) DEFAULT NULL"); } catch {}
-
     await dbp.query(`
         CREATE TABLE IF NOT EXISTS orders (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -158,20 +195,6 @@ async function initDb() {
         )
     `);
 
-    // Backward-compatible migrations (if the table existed before new columns were added)
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN address_id INT"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN slot_id INT"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN delivery_fee INT DEFAULT 0"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'placed'"); } catch {}
-    try { await dbp.query("ALTER TABLE orders MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'placed'"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN owner_deleted TINYINT(1) NOT NULL DEFAULT 0"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN customer_deleted TINYINT(1) NOT NULL DEFAULT 0"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN owner_order_number INT DEFAULT NULL"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN customer_order_number INT DEFAULT NULL"); } catch {}
-    try { await dbp.query("ALTER TABLE orders ADD COLUMN owner_notification_pending TINYINT(1) NOT NULL DEFAULT 0"); } catch {}
-    try { await dbp.query("UPDATE orders SET owner_order_number = id WHERE owner_order_number IS NULL OR owner_order_number = 0"); } catch {}
-    try { await dbp.query("UPDATE orders SET customer_order_number = id WHERE customer_order_number IS NULL OR customer_order_number = 0"); } catch {}
-
     await dbp.query(`
         CREATE TABLE IF NOT EXISTS order_items (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -182,7 +205,6 @@ async function initDb() {
             line_total DECIMAL(10,2) NOT NULL DEFAULT 0
         )
     `);
-    try { await dbp.query("ALTER TABLE order_items ADD COLUMN line_total DECIMAL(10,2) NOT NULL DEFAULT 0"); } catch {}
 
     await dbp.query(`
         CREATE TABLE IF NOT EXISTS time_slots (
@@ -208,9 +230,74 @@ async function initDb() {
         )
     `);
 
+    await dbp.query(`
+        CREATE TABLE IF NOT EXISTS moderation_reports (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            reporter_id INT NOT NULL,
+            reporter_role VARCHAR(20) NOT NULL,
+            target_user_id INT NOT NULL,
+            target_role VARCHAR(20) NOT NULL,
+            order_id INT NOT NULL,
+            store_id INT NOT NULL,
+            report_type VARCHAR(20) NOT NULL,
+            rating INT DEFAULT NULL,
+            message TEXT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            admin_notes TEXT,
+            resolved_by INT DEFAULT NULL,
+            resolution_action VARCHAR(20) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+    `);
+
+    await dbp.query(`
+        CREATE TABLE IF NOT EXISTS moderation_actions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            admin_id INT NOT NULL,
+            target_user_id INT NOT NULL,
+            report_id INT DEFAULT NULL,
+            action_type VARCHAR(20) NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    try { await dbp.query("ALTER TABLE users ADD COLUMN account_status VARCHAR(20) NOT NULL DEFAULT 'active'"); } catch {}
+    try { await dbp.query("ALTER TABLE users ADD COLUMN warning_count INT NOT NULL DEFAULT 0"); } catch {}
+    try { await dbp.query("ALTER TABLE users ADD COLUMN ban_reason VARCHAR(255) DEFAULT ''"); } catch {}
+    try { await dbp.query("ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"); } catch {}
+    try { await dbp.query("ALTER TABLE users MODIFY COLUMN role VARCHAR(20) NOT NULL"); } catch {}
+
+    try { await dbp.query("ALTER TABLE products ADD COLUMN description VARCHAR(255) DEFAULT ''"); } catch {}
+    try { await dbp.query("ALTER TABLE products ADD COLUMN image VARCHAR(255) DEFAULT NULL"); } catch {}
+
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN address_id INT"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN slot_id INT"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN delivery_fee INT DEFAULT 0"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'placed'"); } catch {}
+    try { await dbp.query("ALTER TABLE orders MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'placed'"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN owner_deleted TINYINT(1) NOT NULL DEFAULT 0"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN customer_deleted TINYINT(1) NOT NULL DEFAULT 0"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN owner_order_number INT DEFAULT NULL"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN customer_order_number INT DEFAULT NULL"); } catch {}
+    try { await dbp.query("ALTER TABLE orders ADD COLUMN owner_notification_pending TINYINT(1) NOT NULL DEFAULT 0"); } catch {}
+    try { await dbp.query("UPDATE orders SET owner_order_number = id WHERE owner_order_number IS NULL OR owner_order_number = 0"); } catch {}
+    try { await dbp.query("UPDATE orders SET customer_order_number = id WHERE customer_order_number IS NULL OR customer_order_number = 0"); } catch {}
+
+    try { await dbp.query("ALTER TABLE order_items ADD COLUMN line_total DECIMAL(10,2) NOT NULL DEFAULT 0"); } catch {}
+
+    try { await dbp.query("ALTER TABLE moderation_reports ADD COLUMN rating INT DEFAULT NULL"); } catch {}
+    try { await dbp.query("ALTER TABLE moderation_reports ADD COLUMN admin_notes TEXT"); } catch {}
+    try { await dbp.query("ALTER TABLE moderation_reports ADD COLUMN resolved_by INT DEFAULT NULL"); } catch {}
+    try { await dbp.query("ALTER TABLE moderation_reports ADD COLUMN resolution_action VARCHAR(20) DEFAULT NULL"); } catch {}
+    try { await dbp.query("ALTER TABLE moderation_reports ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"); } catch {}
+
     try { await dbp.query("ALTER TABLE users ADD UNIQUE KEY uniq_users_email (email)"); } catch {}
     try { await dbp.query("ALTER TABLE stores ADD UNIQUE KEY uniq_stores_owner (owner_id)"); } catch {}
     try { await dbp.query("ALTER TABLE time_slots ADD UNIQUE KEY uniq_time_slot (store_id, slot_time)"); } catch {}
+
+    await ensureAdminAccount();
 }
 
 async function requireAuth(req, res, next) {
@@ -218,7 +305,7 @@ async function requireAuth(req, res, next) {
     if (!token) return res.status(401).json({ message: "Login required" });
 
     const [rows] = await dbp.query(
-        `SELECT us.token, u.id, u.name, u.email, u.role
+        `SELECT us.token, u.id, u.name, u.email, u.role, u.account_status, u.warning_count, u.ban_reason
          FROM user_sessions us
          JOIN users u ON u.id = us.user_id
          WHERE us.token=?`,
@@ -226,6 +313,11 @@ async function requireAuth(req, res, next) {
     );
 
     if (!rows[0]) return res.status(401).json({ message: "Invalid session" });
+    if (!canUsePlatform(rows[0].account_status)) {
+        await dbp.query("DELETE FROM user_sessions WHERE token=?", [token]);
+        return res.status(403).json({ message: "Your account has been restricted by the admin" });
+    }
+
     req.auth = { token, user: rows[0] };
     next();
 }
@@ -239,6 +331,12 @@ function requireOwner(req, res, next) {
 function requireCustomer(req, res, next) {
     if (!req.auth?.user) return res.status(401).json({ message: "Login required" });
     if (req.auth.user.role !== "customer") return res.status(403).json({ message: "Customer access required" });
+    next();
+}
+
+function requireAdmin(req, res, next) {
+    if (!req.auth?.user) return res.status(401).json({ message: "Login required" });
+    if (req.auth.user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
     next();
 }
 
@@ -288,41 +386,89 @@ async function purgeOrderIfHiddenEverywhere(orderId) {
     }
 }
 
+async function createModerationAction(adminId, targetUserId, reportId, actionType, notes) {
+    await dbp.query(
+        "INSERT INTO moderation_actions (admin_id, target_user_id, report_id, action_type, notes) VALUES (?, ?, ?, ?, ?)",
+        [adminId, targetUserId, reportId || null, actionType, notes || ""]
+    );
+}
+
+async function issueWarning(adminId, targetUserId, reportId, notes) {
+    await dbp.query(
+        `UPDATE users
+         SET warning_count = warning_count + 1,
+             account_status = CASE WHEN account_status = 'active' THEN 'warned' ELSE account_status END,
+             ban_reason = ?
+         WHERE id = ? AND role <> 'admin'`,
+        [notes || "Warning issued by admin", targetUserId]
+    );
+    await createModerationAction(adminId, targetUserId, reportId, "warning", notes);
+}
+
+async function removeUserAccess(adminId, targetUserId, reportId, notes, status) {
+    const nextStatus = status === "removed" ? "removed" : "banned";
+    await dbp.query(
+        "UPDATE users SET account_status = ?, ban_reason = ? WHERE id = ? AND role <> 'admin'",
+        [nextStatus, notes || "", targetUserId]
+    );
+    await dbp.query("DELETE FROM user_sessions WHERE user_id = ?", [targetUserId]);
+    await createModerationAction(adminId, targetUserId, reportId, nextStatus, notes);
+}
+
+async function resolveReport(reportId, adminId, action, adminNotes) {
+    await dbp.query(
+        `UPDATE moderation_reports
+         SET status = 'resolved', admin_notes = ?, resolved_by = ?, resolution_action = ?
+         WHERE id = ?`,
+        [adminNotes || "", adminId, action, reportId]
+    );
+}
+
+async function rejectReport(reportId, adminId, adminNotes) {
+    await dbp.query(
+        `UPDATE moderation_reports
+         SET status = 'dismissed', admin_notes = ?, resolved_by = ?, resolution_action = 'dismissed'
+         WHERE id = ?`,
+        [adminNotes || "", adminId, reportId]
+    );
+}
+
 // ================= AUTH =================
-app.post("/auth/register-customer", async (req, res) => {
+app.post("/auth/register-customer", asyncHandler(async (req, res) => {
     const { name, email, password } = req.body || {};
     if (!name || !email || !password) return res.status(400).json({ message: "Missing fields" });
 
     try {
         const [result] = await dbp.query(
-            "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'customer')",
-            [name, email, password]
+            "INSERT INTO users (name, email, password, role, account_status, warning_count, ban_reason) VALUES (?, ?, ?, 'customer', 'active', 0, '')",
+            [name, String(email).trim().toLowerCase(), password]
         );
 
         const userId = result.insertId;
         const token = newToken();
         await dbp.query("INSERT INTO user_sessions (token, user_id) VALUES (?, ?)", [token, userId]);
 
-        res.json({ token, user: { id: userId, name, email, role: "customer" } });
+        res.json({ token, user: { id: userId, name, email: String(email).trim().toLowerCase(), role: "customer" } });
     } catch (e) {
         if (String(e?.message || "").toLowerCase().includes("duplicate")) {
             return res.status(409).json({ message: "Email already registered" });
         }
         res.status(500).json({ message: "Server error" });
     }
-});
+}));
 
 app.post("/auth/register-owner", asyncHandler(async (req, res) => {
     const { name, email, password, store_name } = req.body || {};
     if (!name || !email || !password || !store_name) return res.status(400).json({ message: "Missing fields" });
 
     const storeNameCaps = String(store_name).trim().toUpperCase();
+    const normalizedEmail = String(email).trim().toLowerCase();
     if (!storeNameCaps) return res.status(400).json({ message: "Missing fields" });
 
     try {
         const [userResult] = await dbp.query(
-            "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'owner')",
-            [name, email, password]
+            "INSERT INTO users (name, email, password, role, account_status, warning_count, ban_reason) VALUES (?, ?, ?, 'owner', 'active', 0, '')",
+            [name, normalizedEmail, password]
         );
 
         const ownerId = userResult.insertId;
@@ -331,20 +477,22 @@ app.post("/auth/register-owner", asyncHandler(async (req, res) => {
             [ownerId, storeNameCaps]
         );
 
-        const store = {
-            id: storeResult.insertId,
-            owner_id: ownerId,
-            store_name: storeNameCaps,
-            delivery_available: 0,
-            delivery_charge: 0,
-            min_order_free_delivery: 0,
-            pickup_available: 1
-        };
-
         const token = newToken();
         await dbp.query("INSERT INTO user_sessions (token, user_id) VALUES (?, ?)", [token, ownerId]);
 
-        res.json({ token, user: { id: ownerId, name, email, role: "owner" }, store });
+        res.json({
+            token,
+            user: { id: ownerId, name, email: normalizedEmail, role: "owner" },
+            store: {
+                id: storeResult.insertId,
+                owner_id: ownerId,
+                store_name: storeNameCaps,
+                delivery_available: 0,
+                delivery_charge: 0,
+                min_order_free_delivery: 0,
+                pickup_available: 1
+            }
+        });
     } catch (e) {
         if (String(e?.message || "").toLowerCase().includes("duplicate")) {
             return res.status(409).json({ message: "Email already registered" });
@@ -353,8 +501,9 @@ app.post("/auth/register-owner", asyncHandler(async (req, res) => {
     }
 }));
 
-app.post("/auth/login", async (req, res) => {
-    const { email, password } = req.body || {};
+app.post("/auth/login", asyncHandler(async (req, res) => {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const password = String(req.body?.password || "").trim();
     if (!email || !password) return res.status(400).json({ message: "Missing fields" });
 
     const [rows] = await dbp.query(
@@ -363,6 +512,9 @@ app.post("/auth/login", async (req, res) => {
     );
 
     if (!rows[0]) return res.status(401).json({ message: "Invalid credentials" });
+    if (!canUsePlatform(rows[0].account_status)) {
+        return res.status(403).json({ message: "Your account has been restricted by the admin" });
+    }
 
     const token = newToken();
     await dbp.query("INSERT INTO user_sessions (token, user_id) VALUES (?, ?)", [token, rows[0].id]);
@@ -370,7 +522,7 @@ app.post("/auth/login", async (req, res) => {
     const u = userDto(rows[0]);
     const store = u?.role === "owner" ? await getOwnerStore(u.id) : null;
     res.json({ token, user: u, store });
-});
+}));
 
 app.post("/auth/logout", asyncHandler(async (req, res) => {
     const token = req.headers.authorization?.split(" ")[1];
@@ -379,10 +531,40 @@ app.post("/auth/logout", asyncHandler(async (req, res) => {
     res.json({ message: "Logged out" });
 }));
 
+app.get("/auth/me", requireAuth, asyncHandler(async (req, res) => {
+    const user = userDto(req.auth.user);
+    let moderationReports = [];
+
+    if (req.auth.user.role === "owner" || req.auth.user.role === "customer") {
+        const [rows] = await dbp.query(
+            `SELECT mr.id, mr.order_id, mr.report_type, mr.message, mr.status, mr.admin_notes,
+                    mr.created_at, mr.updated_at, mr.resolution_action, mr.rating,
+                    reporter.name AS reporter_name, reporter.role AS reporter_role,
+                    s.store_name,
+                    admin_user.name AS resolved_by_name
+             FROM moderation_reports mr
+             JOIN users reporter ON reporter.id = mr.reporter_id
+             LEFT JOIN stores s ON s.id = mr.store_id
+             LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by
+             WHERE mr.target_user_id = ?
+             ORDER BY mr.updated_at DESC, mr.created_at DESC
+             LIMIT 10`,
+            [req.auth.user.id]
+        );
+        moderationReports = rows;
+    }
+
+    res.json({ user, moderation_reports: moderationReports });
+}));
+
 // ================= PUBLIC CUSTOMER-FACING APIs =================
 app.get("/stores", asyncHandler(async (req, res) => {
     const [rows] = await dbp.query(
-        "SELECT id, store_name, delivery_available, delivery_charge, min_order_free_delivery, pickup_available FROM stores ORDER BY id DESC"
+        `SELECT s.id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available
+         FROM stores s
+         JOIN users u ON u.id = s.owner_id
+         WHERE u.account_status NOT IN ('banned', 'removed')
+         ORDER BY s.id DESC`
     );
     res.json(rows);
 }));
@@ -392,7 +574,10 @@ app.get("/store/:storeId", asyncHandler(async (req, res) => {
     if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
 
     const [rows] = await dbp.query(
-        "SELECT id, owner_id, store_name, delivery_available, delivery_charge, min_order_free_delivery, pickup_available FROM stores WHERE id=?",
+        `SELECT s.id, s.owner_id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available
+         FROM stores s
+         JOIN users u ON u.id = s.owner_id
+         WHERE s.id=? AND u.account_status NOT IN ('banned', 'removed')`,
         [storeId]
     );
     if (!rows[0]) return res.status(404).json({ message: "Store not found" });
@@ -402,6 +587,15 @@ app.get("/store/:storeId", asyncHandler(async (req, res) => {
 app.get("/products/:storeId", asyncHandler(async (req, res) => {
     const storeId = Number(req.params.storeId);
     if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
+
+    const [storeRows] = await dbp.query(
+        `SELECT s.id
+         FROM stores s
+         JOIN users u ON u.id = s.owner_id
+         WHERE s.id = ? AND u.account_status NOT IN ('banned', 'removed')`,
+        [storeId]
+    );
+    if (!storeRows[0]) return res.json([]);
 
     const [rows] = await dbp.query(
         "SELECT id, store_id, name, price, quantity, unit, description, image FROM products WHERE store_id=? ORDER BY id DESC",
@@ -413,6 +607,7 @@ app.get("/products/:storeId", asyncHandler(async (req, res) => {
 app.get("/store/:storeId/slots", asyncHandler(async (req, res) => {
     const storeId = Number(req.params.storeId);
     if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
+
     const [rows] = await dbp.query(
         "SELECT id, store_id, slot_time FROM time_slots WHERE store_id=? ORDER BY id DESC",
         [storeId]
@@ -548,7 +743,7 @@ app.post("/owner/slots", requireAuth, requireOwner, asyncHandler(async (req, res
     try {
         await dbp.query(
             "INSERT INTO time_slots (store_id, slot_time) VALUES (?, ?)",
-            [store.id, slot_time]
+            [store.id, String(slot_time).trim()]
         );
     } catch (e) {
         if (String(e?.message || "").toLowerCase().includes("duplicate")) {
@@ -573,6 +768,96 @@ app.delete("/owner/slots/:slotId", requireAuth, requireOwner, asyncHandler(async
     );
     if (!result.affectedRows) return res.status(404).json({ message: "Slot not found" });
     res.json({ message: "Slot removed" });
+}));
+
+app.get("/owner/orders/:store_id", requireAuth, requireOwner, asyncHandler(async (req, res) => {
+    const storeId = Number(req.params.store_id);
+    if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
+
+    const ownerStore = await getOwnerStore(req.auth.user.id);
+    if (!ownerStore || Number(ownerStore.id) !== storeId) {
+        return res.status(403).json({ message: "Store access denied" });
+    }
+
+    const [orders] = await dbp.query(
+        `SELECT o.*, o.owner_order_number AS display_order_number,
+                u.name AS customer_name, u.email AS customer_email, u.id AS customer_user_id, u.account_status AS customer_account_status
+         FROM orders o
+         LEFT JOIN users u ON u.id = o.customer_id
+         WHERE o.store_id = ? AND o.owner_deleted = 0
+         ORDER BY o.owner_order_number DESC, o.id DESC`,
+        [storeId]
+    );
+
+    await attachItemsToOrders(orders);
+    res.json(orders);
+}));
+
+app.get("/owner/orders/:store_id/notifications", requireAuth, requireOwner, asyncHandler(async (req, res) => {
+    const storeId = Number(req.params.store_id);
+    if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
+
+    const ownerStore = await getOwnerStore(req.auth.user.id);
+    if (!ownerStore || Number(ownerStore.id) !== storeId) {
+        return res.status(403).json({ message: "Store access denied" });
+    }
+
+    const [rows] = await dbp.query(
+        "SELECT COUNT(*) AS pending_count FROM orders WHERE store_id = ? AND owner_deleted = 0 AND owner_notification_pending = 1",
+        [storeId]
+    );
+    const count = Number(rows[0]?.pending_count) || 0;
+
+    if (count > 0) {
+        await dbp.query(
+            "UPDATE orders SET owner_notification_pending = 0 WHERE store_id = ? AND owner_deleted = 0 AND owner_notification_pending = 1",
+            [storeId]
+        );
+    }
+
+    res.json({ count });
+}));
+
+app.post("/update-order-status", requireAuth, requireOwner, asyncHandler(async (req, res) => {
+    const orderId = Number(req.body?.order_id);
+    const status = String(req.body?.status || "").trim().toLowerCase();
+    if (!Number.isFinite(orderId)) return res.status(400).json({ message: "Invalid order id" });
+    if (!["accepted", "rejected", "placed"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const ownerStore = await getOwnerStore(req.auth.user.id);
+    if (!ownerStore) return res.status(404).json({ message: "Store not found" });
+
+    const [result] = await dbp.query(
+        "UPDATE orders SET status = ? WHERE id = ? AND store_id = ?",
+        [status, orderId, ownerStore.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ message: "Order not found" });
+
+    res.json({ message: "Order status updated" });
+}));
+
+app.delete("/owner/orders/:orderId", requireAuth, requireOwner, asyncHandler(async (req, res) => {
+    const orderId = Number(req.params.orderId);
+    if (!Number.isFinite(orderId)) return res.status(400).json({ message: "Invalid order id" });
+
+    const ownerStore = await getOwnerStore(req.auth.user.id);
+    if (!ownerStore) return res.status(404).json({ message: "Store not found" });
+
+    const [orders] = await dbp.query(
+        "SELECT id FROM orders WHERE id = ? AND store_id = ? AND owner_deleted = 0",
+        [orderId, ownerStore.id]
+    );
+    if (!orders[0]) return res.status(404).json({ message: "Order not found" });
+
+    await dbp.query(
+        "UPDATE orders SET owner_deleted = 1 WHERE id = ? AND store_id = ?",
+        [orderId, ownerStore.id]
+    );
+    await purgeOrderIfHiddenEverywhere(orderId);
+
+    res.json({ message: "Order removed from the store order panel" });
 }));
 
 // ================= CUSTOMER APIs =================
@@ -646,6 +931,15 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
         return res.status(400).json({ message: "No items" });
     }
 
+    const [storeRows] = await dbp.query(
+        `SELECT s.id
+         FROM stores s
+         JOIN users u ON u.id = s.owner_id
+         WHERE s.id = ? AND u.account_status NOT IN ('banned', 'removed')`,
+        [storeId]
+    );
+    if (!storeRows[0]) return res.status(404).json({ message: "Store not found" });
+
     const fee = Number(delivery_fee) || 0;
     let itemsTotal = 0;
     for (const it of items) {
@@ -682,6 +976,7 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
             [orderId, it.name, unitPrice, qty, qty * unitPrice]
         );
     }
+
     res.json({
         message: "Order placed",
         order_id: orderId,
@@ -692,9 +987,11 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
 
 app.get("/user/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) => {
     const [orders] = await dbp.query(
-        `SELECT o.*, o.customer_order_number AS display_order_number, s.store_name
+        `SELECT o.*, o.customer_order_number AS display_order_number, s.store_name, s.owner_id,
+                u.name AS owner_name, u.account_status AS owner_account_status
          FROM orders o
          LEFT JOIN stores s ON s.id = o.store_id
+         LEFT JOIN users u ON u.id = s.owner_id
          WHERE o.customer_id = ? AND o.customer_deleted = 0
          ORDER BY o.customer_order_number DESC, o.id DESC`,
         [req.auth.user.id]
@@ -723,6 +1020,201 @@ app.delete("/user/orders/:orderId", requireAuth, requireCustomer, asyncHandler(a
     res.json({ message: "Order removed from your order history" });
 }));
 
+// ================= REPORTING / REVIEW =================
+app.post("/reports", requireAuth, asyncHandler(async (req, res) => {
+    const user = req.auth.user;
+    if (!["customer", "owner"].includes(user.role)) {
+        return res.status(403).json({ message: "Only customers and owners can send reports" });
+    }
+
+    const orderId = Number(req.body?.order_id);
+    const targetUserId = Number(req.body?.target_user_id);
+    const reportType = String(req.body?.report_type || "").trim().toLowerCase();
+    const message = String(req.body?.message || "").trim();
+    const rating = req.body?.rating === null || req.body?.rating === undefined || req.body?.rating === ""
+        ? null
+        : Number(req.body.rating);
+
+    if (!Number.isFinite(orderId) || !Number.isFinite(targetUserId)) {
+        return res.status(400).json({ message: "Invalid order or target user" });
+    }
+    if (!["review", "complaint"].includes(reportType)) {
+        return res.status(400).json({ message: "Report type must be review or complaint" });
+    }
+    if (!message) {
+        return res.status(400).json({ message: "Please enter the review or complaint details" });
+    }
+    if (reportType === "review" && (!Number.isFinite(rating) || rating < 1 || rating > 5)) {
+        return res.status(400).json({ message: "Review rating must be between 1 and 5" });
+    }
+
+    const [orderRows] = await dbp.query(
+        `SELECT o.id, o.customer_id, o.store_id, s.owner_id
+         FROM orders o
+         JOIN stores s ON s.id = o.store_id
+         WHERE o.id = ?`,
+        [orderId]
+    );
+    const order = orderRows[0];
+    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    let expectedTargetUserId = null;
+    let targetRole = null;
+
+    if (user.role === "customer") {
+        if (Number(order.customer_id) !== Number(user.id)) {
+            return res.status(403).json({ message: "You can only review your own orders" });
+        }
+        expectedTargetUserId = Number(order.owner_id);
+        targetRole = "owner";
+    } else {
+        if (Number(order.owner_id) !== Number(user.id)) {
+            return res.status(403).json({ message: "You can only review customers from your own store orders" });
+        }
+        expectedTargetUserId = Number(order.customer_id);
+        targetRole = "customer";
+    }
+
+    if (expectedTargetUserId !== targetUserId) {
+        return res.status(403).json({ message: "Invalid target user for this order" });
+    }
+
+    await dbp.query(
+        `INSERT INTO moderation_reports (
+            reporter_id, reporter_role, target_user_id, target_role, order_id, store_id, report_type, rating, message, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [user.id, user.role, targetUserId, targetRole, orderId, order.store_id, reportType, reportType === "review" ? rating : null, message]
+    );
+
+    res.json({ message: "Your feedback has been sent to the admin" });
+}));
+
+app.get("/my-reports", requireAuth, asyncHandler(async (req, res) => {
+    const [rows] = await dbp.query(
+        `SELECT mr.id, mr.order_id, mr.report_type, mr.rating, mr.message, mr.status, mr.admin_notes,
+                mr.created_at, mr.updated_at, mr.resolution_action,
+                tu.name AS target_name, tu.role AS target_role,
+                s.store_name,
+                admin_user.name AS resolved_by_name
+         FROM moderation_reports mr
+         JOIN users tu ON tu.id = mr.target_user_id
+         LEFT JOIN stores s ON s.id = mr.store_id
+         LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by
+         WHERE mr.reporter_id = ?
+         ORDER BY mr.created_at DESC`,
+        [req.auth.user.id]
+    );
+    res.json(rows);
+}));
+
+// ================= ADMIN APIs =================
+app.get("/admin/dashboard", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const [[summaryRows], [users], [reports], [actions]] = await Promise.all([
+        dbp.query(
+            `SELECT
+                (SELECT COUNT(*) FROM users WHERE role = 'customer') AS customers,
+                (SELECT COUNT(*) FROM users WHERE role = 'owner') AS owners,
+                (SELECT COUNT(*) FROM users WHERE account_status = 'banned') AS banned_users,
+                (SELECT COUNT(*) FROM users WHERE account_status = 'removed') AS removed_users,
+                (SELECT COUNT(*) FROM moderation_reports WHERE status = 'pending') AS pending_reports`
+        ),
+        dbp.query(
+            `SELECT u.id, u.name, u.email, u.role, u.account_status, u.warning_count, u.ban_reason, u.created_at,
+                    s.id AS store_id, s.store_name
+             FROM users u
+             LEFT JOIN stores s ON s.owner_id = u.id
+             WHERE u.role IN ('customer', 'owner')
+             ORDER BY FIELD(u.account_status, 'banned', 'removed', 'warned', 'active'), u.role, u.name`
+        ),
+        dbp.query(
+            `SELECT mr.id, mr.report_type, mr.rating, mr.message, mr.status, mr.admin_notes, mr.order_id, mr.store_id,
+                    mr.created_at, mr.resolution_action,
+                    reporter.name AS reporter_name, reporter.email AS reporter_email, reporter.role AS reporter_role,
+                    target.id AS target_user_id, target.name AS target_name, target.email AS target_email, target.role AS target_role, target.account_status AS target_account_status,
+                    s.store_name,
+                    admin_user.name AS resolved_by_name
+             FROM moderation_reports mr
+             JOIN users reporter ON reporter.id = mr.reporter_id
+             JOIN users target ON target.id = mr.target_user_id
+             LEFT JOIN stores s ON s.id = mr.store_id
+             LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by
+             ORDER BY FIELD(mr.status, 'pending', 'resolved', 'dismissed'), mr.created_at DESC`
+        ),
+        dbp.query(
+            `SELECT ma.id, ma.action_type, ma.notes, ma.created_at,
+                    admin_user.name AS admin_name,
+                    target.name AS target_name, target.role AS target_role
+             FROM moderation_actions ma
+             JOIN users admin_user ON admin_user.id = ma.admin_id
+             JOIN users target ON target.id = ma.target_user_id
+             ORDER BY ma.created_at DESC
+             LIMIT 20`
+        )
+    ]);
+
+    res.json({
+        summary: {
+            customers: Number(summaryRows[0]?.customers) || 0,
+            owners: Number(summaryRows[0]?.owners) || 0,
+            banned_users: Number(summaryRows[0]?.banned_users) || 0,
+            removed_users: Number(summaryRows[0]?.removed_users) || 0,
+            pending_reports: Number(summaryRows[0]?.pending_reports) || 0
+        },
+        users,
+        reports,
+        actions
+    });
+}));
+
+app.post("/admin/users/:userId/action", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const targetUserId = Number(req.params.userId);
+    const action = String(req.body?.action || "").trim().toLowerCase();
+    const notes = String(req.body?.notes || "").trim();
+    const reportId = req.body?.report_id ? Number(req.body.report_id) : null;
+
+    if (!Number.isFinite(targetUserId)) return res.status(400).json({ message: "Invalid user" });
+    if (!["warning", "ban", "remove", "activate"].includes(action)) {
+        return res.status(400).json({ message: "Invalid admin action" });
+    }
+
+    const [rows] = await dbp.query(
+        "SELECT id, role FROM users WHERE id = ?",
+        [targetUserId]
+    );
+    const targetUser = rows[0];
+    if (!targetUser) return res.status(404).json({ message: "User not found" });
+    if (targetUser.role === "admin") return res.status(400).json({ message: "Admin accounts cannot be moderated here" });
+
+    if (action === "warning") {
+        await issueWarning(req.auth.user.id, targetUserId, reportId, notes || "Warning issued by admin");
+    } else if (action === "ban") {
+        await removeUserAccess(req.auth.user.id, targetUserId, reportId, notes || "Banned by admin", "banned");
+    } else if (action === "remove") {
+        await removeUserAccess(req.auth.user.id, targetUserId, reportId, notes || "Removed by admin", "removed");
+    } else if (action === "activate") {
+        await dbp.query(
+            "UPDATE users SET account_status = 'active', ban_reason = '' WHERE id = ? AND role <> 'admin'",
+            [targetUserId]
+        );
+        await createModerationAction(req.auth.user.id, targetUserId, reportId, "activate", notes || "Account reactivated");
+    }
+
+    if (Number.isFinite(reportId)) {
+        await resolveReport(reportId, req.auth.user.id, action, notes);
+    }
+
+    res.json({ message: "Admin action saved" });
+}));
+
+app.post("/admin/reports/:reportId/dismiss", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const reportId = Number(req.params.reportId);
+    const adminNotes = String(req.body?.notes || "").trim();
+    if (!Number.isFinite(reportId)) return res.status(400).json({ message: "Invalid report" });
+
+    await rejectReport(reportId, req.auth.user.id, adminNotes || "Report dismissed by admin");
+    res.json({ message: "Report dismissed" });
+}));
+
 // ================= ERROR HANDLER =================
 app.use((err, req, res, next) => {
     console.error(err);
@@ -745,129 +1237,5 @@ async function start() {
         process.exit(1);
     }
 }
-app.get("/owner/orders/:store_id", requireAuth, requireOwner, asyncHandler(async (req, res) => {
-    const storeId = Number(req.params.store_id);
-    if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
-
-    const ownerStore = await getOwnerStore(req.auth.user.id);
-    if (!ownerStore || Number(ownerStore.id) !== storeId) {
-        return res.status(403).json({ message: "Store access denied" });
-    }
-
-    const [orders] = await dbp.query(
-        `SELECT o.*, o.owner_order_number AS display_order_number, u.name AS customer_name
-         FROM orders o
-         LEFT JOIN users u ON u.id = o.customer_id
-         WHERE o.store_id = ? AND o.owner_deleted = 0
-         ORDER BY o.owner_order_number DESC, o.id DESC`,
-        [storeId]
-    );
-
-    await attachItemsToOrders(orders);
-
-    res.json(orders);
-}));
-app.get("/owner/orders/:store_id/notifications", requireAuth, requireOwner, asyncHandler(async (req, res) => {
-    const storeId = Number(req.params.store_id);
-    if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
-
-    const ownerStore = await getOwnerStore(req.auth.user.id);
-    if (!ownerStore || Number(ownerStore.id) !== storeId) {
-        return res.status(403).json({ message: "Store access denied" });
-    }
-
-    const [rows] = await dbp.query(
-        "SELECT COUNT(*) AS pending_count FROM orders WHERE store_id = ? AND owner_deleted = 0 AND owner_notification_pending = 1",
-        [storeId]
-    );
-    const count = Number(rows[0]?.pending_count) || 0;
-
-    if (count > 0) {
-        await dbp.query(
-            "UPDATE orders SET owner_notification_pending = 0 WHERE store_id = ? AND owner_deleted = 0 AND owner_notification_pending = 1",
-            [storeId]
-        );
-    }
-
-    res.json({ count });
-}));
-app.post("/update-order-status", requireAuth, requireOwner, asyncHandler(async (req, res) => {
-    const orderId = Number(req.body?.order_id);
-    const status = String(req.body?.status || "").trim().toLowerCase();
-    if (!Number.isFinite(orderId)) return res.status(400).json({ message: "Invalid order id" });
-    if (!["accepted", "rejected", "placed"].includes(status)) {
-        return res.status(400).json({ message: "Invalid status" });
-    }
-
-    const ownerStore = await getOwnerStore(req.auth.user.id);
-    if (!ownerStore) return res.status(404).json({ message: "Store not found" });
-
-    const [result] = await dbp.query(
-        "UPDATE orders SET status = ? WHERE id = ? AND store_id = ?",
-        [status, orderId, ownerStore.id]
-    );
-    if (!result.affectedRows) return res.status(404).json({ message: "Order not found" });
-
-    res.json({ message: "Order status updated" });
-}));
-app.delete("/owner/orders/:orderId", requireAuth, requireOwner, asyncHandler(async (req, res) => {
-    const orderId = Number(req.params.orderId);
-    if (!Number.isFinite(orderId)) return res.status(400).json({ message: "Invalid order id" });
-
-    const ownerStore = await getOwnerStore(req.auth.user.id);
-    if (!ownerStore) return res.status(404).json({ message: "Store not found" });
-
-    const [orders] = await dbp.query(
-        "SELECT id FROM orders WHERE id = ? AND store_id = ? AND owner_deleted = 0",
-        [orderId, ownerStore.id]
-    );
-    if (!orders[0]) return res.status(404).json({ message: "Order not found" });
-
-    await dbp.query(
-        "UPDATE orders SET owner_deleted = 1 WHERE id = ? AND store_id = ?",
-        [orderId, ownerStore.id]
-    );
-    await purgeOrderIfHiddenEverywhere(orderId);
-
-    res.json({ message: "Order removed from the store order panel" });
-}));
-app.post("/place-order", async (req, res) => {
-    const { user_id, store_id } = req.body;
-
-    try {
-        // order create
-        const [result] = await db.query(
-            "INSERT INTO orders (customer_id, store_id, status) VALUES (?, ?, 'placed')",
-            [user_id, store_id]
-        );
-
-        const orderId = result.insertId;
-
-        // cart items uthao
-        const [cartItems] = await db.query(
-            "SELECT * FROM cart WHERE user_id = ?",
-            [user_id]
-        );
-
-            for (let item of cartItems) {
-                const qty = Number(item.quantity) || 0;
-                const unitPrice = Number(item.price) || 0;
-                await db.query(
-                "INSERT INTO order_items (order_id, product_name, unit_price, qty, line_total) VALUES (?, ?, ?, ?, ?)",
-                [orderId, item.name, unitPrice, qty, qty * unitPrice]
-                );
-            }
-
-        // cart clear
-        await db.query("DELETE FROM cart WHERE user_id = ?", [user_id]);
-
-        res.json({ success: true });
-
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ error: "error" });
-    }
-});
-
 
 start();

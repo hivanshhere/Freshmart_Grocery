@@ -1,7 +1,7 @@
 function login() {
-    let email = document.getElementById("email").value.trim();
-    let password = document.getElementById("password").value.trim();
-    let msg = document.getElementById("msg");
+    const email = document.getElementById("email").value.trim().toLowerCase();
+    const password = document.getElementById("password").value.trim();
+    const msg = document.getElementById("msg");
 
     if (email === "" || password === "") {
         msg.innerText = "Enter email and password";
@@ -15,22 +15,28 @@ function login() {
         },
         body: JSON.stringify({ email, password })
     })
-    .then(res => res.json())
-    .then(data => {
-        if (data.message) {
-            msg.innerText = data.message;
-            return;
+    .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            throw new Error(data.message || "Login failed");
         }
-
-        // New API returns { token, user, store }
+        return data;
+    })
+    .then(data => {
         localStorage.setItem("authToken", data.token);
-        localStorage.setItem("userId", data.user.id);
-        localStorage.setItem("userName", data.user.name);
-        localStorage.setItem("userRole", data.user.role);
+        localStorage.setItem("userId", String(data.user.id));
+        localStorage.setItem("userName", data.user.name || "");
+        localStorage.setItem("userRole", data.user.role || "");
+        localStorage.setItem("accountStatus", data.user.account_status || "active");
+        localStorage.setItem("warningCount", String(data.user.warning_count || 0));
+        localStorage.setItem("banReason", data.user.ban_reason || "");
 
         if (data.store && data.store.id) {
             localStorage.setItem("storeId", String(data.store.id));
             localStorage.setItem("storeName", String(data.store.store_name || ""));
+        } else {
+            localStorage.removeItem("storeId");
+            localStorage.removeItem("storeName");
         }
 
         const afterLogin = localStorage.getItem("afterLogin");
@@ -43,14 +49,16 @@ function login() {
             return value.endsWith(".html") || value.includes(".html?");
         };
 
-        if (data.user.role === "owner") {
+        if (data.user.role === "admin") {
+            window.location.href = "admin-dashboard.html";
+        } else if (data.user.role === "owner") {
             window.location.href = "owner-dashboard.html";
         } else {
             window.location.href = isSafeLocalHtml(afterLogin) ? afterLogin : "stores.html";
         }
     })
     .catch(err => {
-        msg.innerText = "Server error";
+        msg.innerText = err.message || "Server error";
         console.log(err);
     });
 }
