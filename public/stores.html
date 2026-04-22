@@ -15,7 +15,7 @@
         <a href="customer-orders.html" data-nav="customer-orders" style="display:none;">Orders</a>
         <a href="owner-dashboard.html" data-nav="owner-dashboard" style="display:none;">Owner Panel</a>
         <a href="admin-dashboard.html" data-nav="admin-dashboard" style="display:none;">Admin Panel</a>
-        <a href="login.html">Login</a>
+        <a href="login.html" data-nav="login">Login</a>
         <a href="addresses.html" data-nav="addresses" style="display:none;">Addresses</a>
         <a href="cart.html">Cart</a>
         <a href="#" data-nav="logout" style="display:none;">Logout</a>
@@ -34,28 +34,16 @@
     </section>
 </main>
 
+<script src="auth.js"></script>
 <script>
 
 // Login check: only logged-in users can access stores
-(function requireLogin(){
-    const userId = localStorage.getItem("userId");
-    const role = localStorage.getItem("userRole");
-
-    if (!userId) {
-        localStorage.setItem("afterLogin", "stores.html");
-        window.location.href = "login.html";
-        return;
-    }
-
-    if (role === "admin") {
-        window.location.href = "admin-dashboard.html";
-        return;
-    }
-
-    if (role === "owner") {
-        window.location.href = "owner-dashboard.html";
-        return;
-    }
+(async function requireLogin(){
+    if (!window.AppAuth?.validateCurrentSession) return;
+    await window.AppAuth.validateCurrentSession({
+        expectedRole: "customer",
+        afterLogin: "stores.html"
+    });
 })();
 
 

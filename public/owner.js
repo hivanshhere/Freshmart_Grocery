@@ -1,13 +1,5 @@
 const API_BASE = "http://localhost:3000";
 
-const role = localStorage.getItem("userRole");
-const token = localStorage.getItem("authToken");
-
-if (role !== "owner" || !token) {
-    alert("Please login as a store owner");
-    window.location.href = "login.html";
-}
-
 const msgEl = document.getElementById("msg");
 const ownerAccountNoticeEl = document.getElementById("ownerAccountNotice");
 const storeDisplayNameEl = document.getElementById("storeDisplayName");
@@ -26,6 +18,10 @@ const slotListEl = document.getElementById("slotList");
 const productFormEl = document.getElementById("productForm");
 
 let currentStore = null;
+
+function ownerToken() {
+    return window.AppAuth?.getToken ? window.AppAuth.getToken() : (localStorage.getItem("authToken") || "");
+}
 
 function formatAdminAction(action) {
     const normalized = String(action || "").toLowerCase();
@@ -100,15 +96,15 @@ function escapeHtml(value) {
 
 function authHeaders(extra = {}) {
     return {
-        "Authorization": `Bearer ${token}`,
+        "Authorization": `Bearer ${ownerToken()}`,
         ...extra
     };
 }
 
 async function fetchJson(url, options = {}) {
     const res = await fetch(url, options);
-    if (res.status === 401) {
-        localStorage.clear();
+    if (res.status === 401 || res.status === 403) {
+        window.AppAuth?.clearStoredSession?.();
         window.location.href = "login.html";
         return null;
     }
@@ -280,8 +276,8 @@ async function saveDeliverySettings() {
     }
 
     try {
-        const res = await fetchJson(`${API_BASE}/api/store/delivery-settings`, {
-            method: "POST",
+        const res = await fetchJson(`${API_BASE}/owner/store/delivery-settings`, {
+            method: "PATCH",
             headers: authHeaders({ "Content-Type": "application/json" }),
             body: JSON.stringify({
                 delivery_available: deliveryAvailableEl.checked,
@@ -396,15 +392,7 @@ async function removeTimeSlot(slotId) {
 }
 
 async function logout() {
-    try {
-        await fetch(`${API_BASE}/auth/logout`, {
-            method: "POST",
-            headers: authHeaders()
-        });
-    } catch {}
-
-    localStorage.clear();
-    window.location.href = "login.html";
+    await window.AppAuth?.logoutUser?.();
 }
 
 if (productFormEl) {
@@ -419,4 +407,13 @@ window.addTimeSlot = addTimeSlot;
 window.removeTimeSlot = removeTimeSlot;
 window.logout = logout;
 
-loadStoreAndProducts();
+async function initOwnerDashboard() {
+    const session = await window.AppAuth?.validateCurrentSession?.({
+        expectedRole: "owner",
+        afterLogin: "owner-dashboard.html"
+    });
+    if (!session?.user) return;
+    loadStoreAndProducts();
+}
+
+initOwnerDashboard();

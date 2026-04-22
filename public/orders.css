@@ -12,6 +12,12 @@ gap:18px;
 margin-bottom:22px;
 }
 
+.orders-hero__actions{
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+}
+
 .orders-hero__eyebrow{
 margin:0 0 8px;
 font-size:13px;
@@ -311,6 +317,10 @@ color:#1f7a45;
     .orders-hero{
         flex-direction:column;
         align-items:flex-start;
+    }
+
+    .orders-hero__actions{
+        width:100%;
     }
 
     .orders-hero h2{

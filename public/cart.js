@@ -29,7 +29,7 @@ function saveCartData(carts) {
 
 function isCustomerLoggedIn() {
     const role = localStorage.getItem("userRole")
-    const token = localStorage.getItem("authToken")
+    const token = window.AppAuth?.getToken ? window.AppAuth.getToken() : localStorage.getItem("authToken")
     return role === "customer" && !!token
 }
 
@@ -72,7 +72,7 @@ function normalizeStoreItems(storeData) {
 
 async function fetchStore(storeId) {
     try {
-        const res = await fetch(`http://localhost:3000/store/${storeId}`)
+        const res = await fetch(`${window.AppAuth?.API_BASE || "http://localhost:3000"}/store/${storeId}`)
         if (!res.ok) return null
         return await res.json()
     } catch {
@@ -88,7 +88,7 @@ function getStoreDisplayName(storeCart, storeData) {
 }
 
 async function loadAddresses() {
-    const token = localStorage.getItem("authToken")
+    const token = window.AppAuth?.getToken ? window.AppAuth.getToken() : localStorage.getItem("authToken")
     if (!token || !isCustomerLoggedIn()) {
         addressCache.loaded = true
         addressCache.list = []
@@ -96,19 +96,12 @@ async function loadAddresses() {
     }
 
     try {
-        const res = await fetch("http://localhost:3000/user/addresses", {
+        const res = await fetch(`${window.AppAuth?.API_BASE || "http://localhost:3000"}/user/addresses`, {
             headers: { "Authorization": `Bearer ${token}` }
         })
         const data = await res.json().catch(() => [])
         addressCache.loaded = true
         addressCache.list = Array.isArray(data) ? data : []
-
-        const savedSelected = String(localStorage.getItem("selectedAddressId") || "")
-        const hasSavedSelected = savedSelected && addressCache.list.some(a => String(a.id) === savedSelected)
-        if (!hasSavedSelected && addressCache.list[0]?.id) {
-            localStorage.setItem("selectedAddressId", String(addressCache.list[0].id))
-        }
-
         return addressCache.list
     } catch {
         addressCache.loaded = true
@@ -117,24 +110,22 @@ async function loadAddresses() {
     }
 }
 
-async function getSelectedAddressId() {
-    const savedSelected = String(localStorage.getItem("selectedAddressId") || "")
-    if (savedSelected) return savedSelected
-
-    const addresses = addressCache.loaded ? addressCache.list : await loadAddresses()
-    const firstId = addresses[0]?.id
-    if (firstId) {
-        localStorage.setItem("selectedAddressId", String(firstId))
-        return String(firstId)
-    }
-    return ""
+function formatAddressOption(address) {
+    const type = String(address?.type || "Address").trim()
+    const parts = [address?.house, address?.area, address?.landmark, address?.city, address?.pincode]
+        .map(v => String(v || "").trim())
+        .filter(Boolean)
+    const line = parts.join(", ") || String(address?.address_line || "").trim()
+    const contact = [address?.customer_name, address?.phone].map(v => String(v || "").trim()).filter(Boolean).join(" | ")
+    const label = [type, contact, line].filter(Boolean).join(" - ")
+    return label || "Saved address"
 }
 
 async function loadSlots(storeId, selectEl) {
     if (!selectEl) return
 
     try {
-        const res = await fetch(`http://localhost:3000/store/${storeId}/slots`)
+        const res = await fetch(`${window.AppAuth?.API_BASE || "http://localhost:3000"}/store/${storeId}/slots`)
         const data = await res.json()
 
         selectEl.innerHTML = ""
@@ -197,6 +188,62 @@ function clearStoreCart(storeId) {
         saveCartData(carts)
     }
     renderCart()
+}
+
+function createDeliveryAddressSection(storeId) {
+    const wrapper = document.createElement("div")
+    wrapper.className = "cart-store-option"
+
+    const label = document.createElement("label")
+    label.className = "cart-store-option__label"
+    label.setAttribute("for", `address-select-${storeId}`)
+    label.innerText = "Delivery Address"
+
+    const helper = document.createElement("p")
+    helper.className = "cart-store-option__helper"
+
+    const select = document.createElement("select")
+    select.id = `address-select-${storeId}`
+    select.className = "cart-store-option__select"
+
+    const placeholder = document.createElement("option")
+    placeholder.value = ""
+    placeholder.innerText = "Select a saved address"
+    placeholder.selected = true
+    select.appendChild(placeholder)
+
+    if (!addressCache.list.length) {
+        select.disabled = true
+        helper.innerHTML = 'Delivery is available, but you need one saved address first. <a href="addresses.html">Manage Addresses</a>'
+    } else {
+        addressCache.list.forEach((address) => {
+            const option = document.createElement("option")
+            option.value = String(address.id)
+            option.innerText = formatAddressOption(address)
+            select.appendChild(option)
+        })
+        helper.innerHTML = 'Choose where this order should be delivered. Need to update something? <a href="addresses.html">Manage Addresses</a>'
+    }
+
+    wrapper.appendChild(label)
+    wrapper.appendChild(select)
+    wrapper.appendChild(helper)
+    return { wrapper, select }
+}
+
+function createPickupInfoSection() {
+    const note = document.createElement("div")
+    note.className = "cart-store-note"
+    note.innerHTML = "<strong>Pickup order:</strong> address details are skipped for this store."
+    return note
+}
+
+async function ensureCustomerSessionForCheckout() {
+    const session = await window.AppAuth?.validateCurrentSession?.({
+        expectedRole: "customer",
+        afterLogin: "cart.html"
+    })
+    return !!session?.user
 }
 
 async function renderCart() {
@@ -318,20 +365,36 @@ async function renderCart() {
         section.appendChild(breakdown)
 
         let slotSelect = null
+        let addressSelect = null
+        if (deliveryType === "delivery") {
+            const addressSection = createDeliveryAddressSection(storeId)
+            addressSelect = addressSection.select
+            section.appendChild(addressSection.wrapper)
+        } else {
+            section.appendChild(createPickupInfoSection())
+        }
+
         if (deliveryType === "pickup") {
             const slotRow = document.createElement("div")
-            slotRow.className = "cart-store-slot"
+            slotRow.className = "cart-store-option"
 
             const slotLabel = document.createElement("label")
+            slotLabel.className = "cart-store-option__label"
             slotLabel.innerText = "Pickup Time Slot"
             slotLabel.setAttribute("for", `slot-${storeId}`)
 
             slotSelect = document.createElement("select")
             slotSelect.id = `slot-${storeId}`
+            slotSelect.className = "cart-store-option__select"
             await loadSlots(storeId, slotSelect)
+
+            const slotHelper = document.createElement("p")
+            slotHelper.className = "cart-store-option__helper"
+            slotHelper.innerText = "Select the time window you want before placing the pickup order."
 
             slotRow.appendChild(slotLabel)
             slotRow.appendChild(slotSelect)
+            slotRow.appendChild(slotHelper)
             section.appendChild(slotRow)
         }
 
@@ -344,7 +407,7 @@ async function renderCart() {
         btn.className = "cart-place-btn"
         btn.type = "button"
         btn.innerText = "Place Order"
-        btn.onclick = () => placeOrder(storeId, { deliveryType, deliveryFee, slotSelect, storeName })
+        btn.onclick = () => placeOrder(storeId, { deliveryType, deliveryFee, slotSelect, addressSelect, storeName })
         section.appendChild(btn)
 
         container.appendChild(section)
@@ -354,11 +417,13 @@ async function renderCart() {
 }
 
 async function placeOrder(storeId, options) {
-    const token = localStorage.getItem("authToken")
-    if (!token) {
-        setMsg("Please login first")
+    const isReady = await ensureCustomerSessionForCheckout()
+    if (!isReady) {
+        setMsg("Please login as a customer to place your order")
         return false
     }
+
+    const token = window.AppAuth?.getToken ? window.AppAuth.getToken() : localStorage.getItem("authToken")
 
     const carts = getCartData()
     const items = normalizeStoreItems(carts[storeId])
@@ -385,9 +450,9 @@ async function placeOrder(storeId, options) {
 
     let addressId = null
     if (deliveryType === "delivery") {
-        addressId = await getSelectedAddressId()
+        addressId = String(options?.addressSelect?.value || "").trim()
         if (!addressId) {
-            setMsg("Please add an address from the Addresses page before placing a delivery order")
+            setMsg("Please select a saved delivery address before placing this order")
             return false
         }
     }
@@ -397,11 +462,11 @@ async function placeOrder(storeId, options) {
         return false
     }
 
-    const payload = {
-        store_id: Number(storeId),
-        delivery_type: deliveryType,
-        address_id: addressId,
-        slot_id: slotId,
+        const payload = {
+            store_id: Number(storeId),
+            delivery_type: deliveryType,
+            address_id: addressId,
+            slot_id: slotId,
         delivery_fee: deliveryFee,
         items: items.map(item => ({
             name: item.name,
@@ -411,7 +476,7 @@ async function placeOrder(storeId, options) {
     }
 
     try {
-        const res = await fetch("http://localhost:3000/orders", {
+        const res = await fetch(`${window.AppAuth?.API_BASE || "http://localhost:3000"}/orders`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -468,6 +533,8 @@ async function placeAllOrders() {
         const ok = await placeOrder(storeId, {
             deliveryType,
             deliveryFee,
+            addressSelect: document.getElementById(`address-select-${storeId}`),
+            slotSelect: document.getElementById(`slot-${storeId}`),
             storeName: getStoreDisplayName(carts[storeId], storeData)
         })
         if (!ok) return

@@ -345,6 +345,40 @@ async function getOwnerStore(ownerId) {
     return rows[0] || null;
 }
 
+async function getActiveStoreById(storeId) {
+    const [rows] = await dbp.query(
+        `SELECT s.id, s.owner_id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available
+         FROM stores s
+         JOIN users u ON u.id = s.owner_id
+         WHERE s.id = ? AND u.account_status NOT IN ('banned', 'removed')`,
+        [storeId]
+    );
+    return rows[0] || null;
+}
+
+async function getCustomerAddressById(addressId, customerId) {
+    const [rows] = await dbp.query(
+        "SELECT id, user_id, address_line FROM user_addresses WHERE id = ? AND user_id = ?",
+        [addressId, customerId]
+    );
+    return rows[0] || null;
+}
+
+async function getStoreSlotById(slotId, storeId) {
+    const [rows] = await dbp.query(
+        "SELECT id, store_id, slot_time FROM time_slots WHERE id = ? AND store_id = ?",
+        [slotId, storeId]
+    );
+    return rows[0] || null;
+}
+
+function calculateDeliveryFee(store, itemsTotal) {
+    if (!store || !store.delivery_available) return 0;
+    const minimumForFree = Number(store.min_order_free_delivery) || 0;
+    if (itemsTotal >= minimumForFree) return 0;
+    return Number(store.delivery_charge) || 0;
+}
+
 async function attachItemsToOrders(orders) {
     for (const order of orders) {
         const [items] = await dbp.query(
@@ -573,15 +607,9 @@ app.get("/store/:storeId", asyncHandler(async (req, res) => {
     const storeId = Number(req.params.storeId);
     if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store id" });
 
-    const [rows] = await dbp.query(
-        `SELECT s.id, s.owner_id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available
-         FROM stores s
-         JOIN users u ON u.id = s.owner_id
-         WHERE s.id=? AND u.account_status NOT IN ('banned', 'removed')`,
-        [storeId]
-    );
-    if (!rows[0]) return res.status(404).json({ message: "Store not found" });
-    res.json(rows[0]);
+    const store = await getActiveStoreById(storeId);
+    if (!store) return res.status(404).json({ message: "Store not found" });
+    res.json(store);
 }));
 
 app.get("/products/:storeId", asyncHandler(async (req, res) => {
@@ -704,7 +732,7 @@ app.delete("/owner/products/:productId", requireAuth, requireOwner, asyncHandler
     res.json({ message: "Product removed" });
 }));
 
-app.post("/api/store/delivery-settings", requireAuth, requireOwner, asyncHandler(async (req, res) => {
+async function saveDeliverySettings(req, res) {
     const { delivery_available, delivery_charge, min_order, pickup_available } = req.body || {};
     const store = await getOwnerStore(req.auth.user.id);
     if (!store) return res.status(400).json({ message: "Create a store first" });
@@ -720,8 +748,11 @@ app.post("/api/store/delivery-settings", requireAuth, requireOwner, asyncHandler
         ]
     );
     const updated = await getOwnerStore(req.auth.user.id);
-    res.json({ message: "Updated", store: updated });
-}));
+    res.json({ message: "Delivery settings updated", store: updated });
+}
+
+app.patch("/owner/store/delivery-settings", requireAuth, requireOwner, asyncHandler(saveDeliverySettings));
+app.post("/api/store/delivery-settings", requireAuth, requireOwner, asyncHandler(saveDeliverySettings));
 
 app.get("/owner/slots", requireAuth, requireOwner, asyncHandler(async (req, res) => {
     const store = await getOwnerStore(req.auth.user.id);
@@ -818,8 +849,8 @@ app.get("/owner/orders/:store_id/notifications", requireAuth, requireOwner, asyn
     res.json({ count });
 }));
 
-app.post("/update-order-status", requireAuth, requireOwner, asyncHandler(async (req, res) => {
-    const orderId = Number(req.body?.order_id);
+async function updateOwnerOrderStatus(req, res) {
+    const orderId = Number(req.params.orderId || req.body?.order_id);
     const status = String(req.body?.status || "").trim().toLowerCase();
     if (!Number.isFinite(orderId)) return res.status(400).json({ message: "Invalid order id" });
     if (!["accepted", "rejected", "placed"].includes(status)) {
@@ -836,7 +867,10 @@ app.post("/update-order-status", requireAuth, requireOwner, asyncHandler(async (
     if (!result.affectedRows) return res.status(404).json({ message: "Order not found" });
 
     res.json({ message: "Order status updated" });
-}));
+}
+
+app.patch("/owner/orders/:orderId/status", requireAuth, requireOwner, asyncHandler(updateOwnerOrderStatus));
+app.post("/update-order-status", requireAuth, requireOwner, asyncHandler(updateOwnerOrderStatus));
 
 app.delete("/owner/orders/:orderId", requireAuth, requireOwner, asyncHandler(async (req, res) => {
     const orderId = Number(req.params.orderId);
@@ -921,7 +955,7 @@ app.delete("/user/addresses/:addressId", requireAuth, requireCustomer, asyncHand
 }));
 
 app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) => {
-    const { store_id, delivery_type, address_id, slot_id, delivery_fee, items } = req.body || {};
+    const { store_id, delivery_type, address_id, slot_id, items } = req.body || {};
     const storeId = Number(store_id);
     if (!Number.isFinite(storeId)) return res.status(400).json({ message: "Invalid store" });
     if (delivery_type !== "delivery" && delivery_type !== "pickup") {
@@ -931,16 +965,9 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
         return res.status(400).json({ message: "No items" });
     }
 
-    const [storeRows] = await dbp.query(
-        `SELECT s.id
-         FROM stores s
-         JOIN users u ON u.id = s.owner_id
-         WHERE s.id = ? AND u.account_status NOT IN ('banned', 'removed')`,
-        [storeId]
-    );
-    if (!storeRows[0]) return res.status(404).json({ message: "Store not found" });
+    const store = await getActiveStoreById(storeId);
+    if (!store) return res.status(404).json({ message: "Store not found" });
 
-    const fee = Number(delivery_fee) || 0;
     let itemsTotal = 0;
     for (const it of items) {
         const qty = Number(it?.qty);
@@ -951,10 +978,43 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
         itemsTotal += qty * unit_price;
     }
 
-    const total_amount = itemsTotal + fee;
-
     const addressId = address_id === null || address_id === undefined || address_id === "" ? null : Number(address_id);
     const slotId = slot_id === null || slot_id === undefined || slot_id === "" ? null : Number(slot_id);
+    let fee = 0;
+    let finalAddressId = null;
+    let finalSlotId = null;
+
+    if (delivery_type === "delivery") {
+        if (!store.delivery_available) {
+            return res.status(400).json({ message: "This store does not offer delivery" });
+        }
+        if (!Number.isFinite(addressId)) {
+            return res.status(400).json({ message: "Please select a delivery address" });
+        }
+
+        const address = await getCustomerAddressById(addressId, req.auth.user.id);
+        if (!address) return res.status(404).json({ message: "Selected address not found" });
+
+        finalAddressId = address.id;
+        finalSlotId = null;
+        fee = calculateDeliveryFee(store, itemsTotal);
+    } else {
+        if (!store.pickup_available) {
+            return res.status(400).json({ message: "This store does not offer pickup" });
+        }
+        if (!Number.isFinite(slotId)) {
+            return res.status(400).json({ message: "Please select a pickup slot" });
+        }
+
+        const slot = await getStoreSlotById(slotId, storeId);
+        if (!slot) return res.status(404).json({ message: "Selected pickup slot not found" });
+
+        finalAddressId = null;
+        finalSlotId = slot.id;
+        fee = 0;
+    }
+
+    const total_amount = itemsTotal + fee;
 
     const ownerOrderNumber = await getNextOwnerOrderNumber(storeId);
     const customerOrderNumber = await getNextCustomerOrderNumber(req.auth.user.id);
@@ -964,7 +1024,7 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
             customer_id, store_id, total_amount, status, delivery_type, address_id, slot_id, delivery_fee,
             owner_order_number, customer_order_number, owner_notification_pending
         ) VALUES (?, ?, ?, 'placed', ?, ?, ?, ?, ?, ?, 1)`,
-        [req.auth.user.id, storeId, total_amount, delivery_type, addressId, slotId, fee, ownerOrderNumber, customerOrderNumber]
+        [req.auth.user.id, storeId, total_amount, delivery_type, finalAddressId, finalSlotId, fee, ownerOrderNumber, customerOrderNumber]
     );
     const orderId = orderResult.insertId;
 
@@ -981,7 +1041,12 @@ app.post("/orders", requireAuth, requireCustomer, asyncHandler(async (req, res) 
         message: "Order placed",
         order_id: orderId,
         customer_order_number: customerOrderNumber,
-        owner_order_number: ownerOrderNumber
+        owner_order_number: ownerOrderNumber,
+        delivery_type,
+        delivery_fee: fee,
+        address_id: finalAddressId,
+        slot_id: finalSlotId,
+        total_amount
     });
 }));
 
@@ -1093,10 +1158,13 @@ app.get("/my-reports", requireAuth, asyncHandler(async (req, res) => {
     const [rows] = await dbp.query(
         `SELECT mr.id, mr.order_id, mr.report_type, mr.rating, mr.message, mr.status, mr.admin_notes,
                 mr.created_at, mr.updated_at, mr.resolution_action,
+                o.customer_order_number AS order_display_number, o.total_amount, o.delivery_type,
+                o.status AS order_status,
                 tu.name AS target_name, tu.role AS target_role,
                 s.store_name,
                 admin_user.name AS resolved_by_name
          FROM moderation_reports mr
+         LEFT JOIN orders o ON o.id = mr.order_id
          JOIN users tu ON tu.id = mr.target_user_id
          LEFT JOIN stores s ON s.id = mr.store_id
          LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by

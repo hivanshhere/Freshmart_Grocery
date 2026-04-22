@@ -1,13 +1,5 @@
 const API_BASE = "http://localhost:3000";
 
-const ownerRole = localStorage.getItem("userRole");
-const ownerToken = localStorage.getItem("authToken");
-
-if (ownerRole !== "owner" || !ownerToken) {
-    alert("Please login as a store owner");
-    window.location.href = "login.html";
-}
-
 const feedbackEl = document.getElementById("ownerOrdersFeedback");
 const summaryEl = document.getElementById("ownerOrdersSummary");
 const listEl = document.getElementById("ownerOrdersList");
@@ -15,6 +7,10 @@ const logoutBtn = document.getElementById("ownerLogoutBtn");
 
 let currentStore = null;
 const ownerReportDrafts = {};
+
+function ownerToken() {
+    return window.AppAuth?.getToken ? window.AppAuth.getToken() : (localStorage.getItem("authToken") || "");
+}
 
 function isOwnerReportEditing() {
     const active = document.activeElement;
@@ -79,8 +75,8 @@ function showFeedback(message, type) {
 
 async function fetchJson(url, options) {
     const res = await fetch(url, options);
-    if (res.status === 401) {
-        localStorage.clear();
+    if (res.status === 401 || res.status === 403) {
+        window.AppAuth?.clearStoredSession?.();
         window.location.href = "login.html";
         return null;
     }
@@ -185,7 +181,7 @@ function renderOrders(orders) {
 async function checkNewOrderNotifications(storeId) {
     const data = await fetchJson(`${API_BASE}/owner/orders/${storeId}/notifications`, {
         method: "GET",
-        headers: { "Authorization": `Bearer ${ownerToken}` }
+        headers: { "Authorization": `Bearer ${ownerToken()}` }
     });
     const count = Number(data?.count) || 0;
     if (count <= 0) return;
@@ -202,13 +198,13 @@ async function loadOrders() {
     try {
         currentStore = await fetchJson(`${API_BASE}/owner/store`, {
             method: "GET",
-            headers: { "Authorization": `Bearer ${ownerToken}` }
+            headers: { "Authorization": `Bearer ${ownerToken()}` }
         });
 
         const [orders] = await Promise.all([
             fetchJson(`${API_BASE}/owner/orders/${currentStore.id}`, {
                 method: "GET",
-                headers: { "Authorization": `Bearer ${ownerToken}` }
+                headers: { "Authorization": `Bearer ${ownerToken()}` }
             }),
             checkNewOrderNotifications(currentStore.id)
         ]);
@@ -226,13 +222,13 @@ async function loadOrders() {
 
 async function updateOrderStatus(orderId, status) {
     try {
-        await fetchJson(`${API_BASE}/update-order-status`, {
-            method: "POST",
+        await fetchJson(`${API_BASE}/owner/orders/${orderId}/status`, {
+            method: "PATCH",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${ownerToken}`
+                "Authorization": `Bearer ${ownerToken()}`
             },
-            body: JSON.stringify({ order_id: orderId, status })
+            body: JSON.stringify({ status })
         });
         showFeedback(`Order status updated to ${status}.`, "success");
         await loadOrders();
@@ -248,7 +244,8 @@ async function deleteOrder(orderId) {
     try {
         await fetchJson(`${API_BASE}/owner/orders/${orderId}`, {
             method: "DELETE",
-            headers: { "Authorization": `Bearer ${ownerToken}` }
+            headers: { "Authorization": `Bearer ${ownerToken()}`
+            }
         });
         showFeedback("The order was removed from the owner page only.", "success");
         await loadOrders();
@@ -294,7 +291,7 @@ async function submitOwnerReport(orderId, targetUserId) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${ownerToken}`
+                "Authorization": `Bearer ${ownerToken()}`
             },
             body: JSON.stringify(payload)
         });
@@ -310,16 +307,7 @@ async function submitOwnerReport(orderId, targetUserId) {
 }
 
 async function logoutOwner() {
-    try {
-        await fetch(`${API_BASE}/auth/logout`, {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${ownerToken}` }
-        });
-    } catch {
-        // ignore
-    }
-    localStorage.clear();
-    window.location.href = "login.html";
+    await window.AppAuth?.logoutUser?.();
 }
 
 if (logoutBtn) {
@@ -348,4 +336,13 @@ window.updateOrderStatus = updateOrderStatus;
 window.deleteOrder = deleteOrder;
 window.submitOwnerReport = submitOwnerReport;
 
-loadOrders();
+async function initOwnerOrdersPage() {
+    const session = await window.AppAuth?.validateCurrentSession?.({
+        expectedRole: "owner",
+        afterLogin: "owner-orders.html"
+    });
+    if (!session?.user) return;
+    loadOrders();
+}
+
+initOwnerOrdersPage();

@@ -1,18 +1,13 @@
 const API_BASE = "http://localhost:3000";
 
-const customerRole = localStorage.getItem("userRole");
-const customerToken = localStorage.getItem("authToken");
-
-if (customerRole !== "customer" || !customerToken) {
-    alert("Please login as a customer");
-    window.location.href = "login.html";
-}
-
 const customerFeedbackEl = document.getElementById("customerOrdersFeedback");
 const customerSummaryEl = document.getElementById("customerOrdersSummary");
-const customerReportsStatusEl = document.getElementById("customerReportsStatus");
 const customerListEl = document.getElementById("customerOrdersList");
 const customerReportDrafts = {};
+
+function customerToken() {
+    return window.AppAuth?.getToken ? window.AppAuth.getToken() : (localStorage.getItem("authToken") || "");
+}
 
 function isCustomerReportEditing() {
     const active = document.activeElement;
@@ -89,32 +84,16 @@ function showFeedback(message, type) {
 
 async function fetchOrders() {
     const res = await fetch(`${API_BASE}/user/orders`, {
-        headers: { "Authorization": `Bearer ${customerToken}` }
+        headers: { "Authorization": `Bearer ${customerToken()}` }
     });
-    if (res.status === 401) {
-        localStorage.clear();
+    if (res.status === 401 || res.status === 403) {
+        window.AppAuth?.clearStoredSession?.();
         window.location.href = "login.html";
         return null;
     }
     const data = await res.json().catch(() => null);
     if (!res.ok) {
         throw new Error(data?.message || `Could not load orders (HTTP ${res.status})`);
-    }
-    return Array.isArray(data) ? data : [];
-}
-
-async function fetchMyReports() {
-    const res = await fetch(`${API_BASE}/my-reports`, {
-        headers: { "Authorization": `Bearer ${customerToken}` }
-    });
-    if (res.status === 401) {
-        localStorage.clear();
-        window.location.href = "login.html";
-        return null;
-    }
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-        throw new Error(data?.message || `Could not load report history (HTTP ${res.status})`);
     }
     return Array.isArray(data) ? data : [];
 }
@@ -139,75 +118,6 @@ function renderSummary(orders) {
         <div class="orders-stat"><span class="orders-stat__label">Accepted</span><strong>${counts.accepted}</strong></div>
         <div class="orders-stat"><span class="orders-stat__label">Rejected</span><strong>${counts.rejected}</strong></div>
     `;
-}
-
-function adminActionLabel(action) {
-    const normalized = String(action || "").toLowerCase();
-    if (normalized === "warning") return "Warning issued";
-    if (normalized === "ban") return "User banned";
-    if (normalized === "remove") return "User removed";
-    if (normalized === "activate") return "Account reactivated";
-    if (normalized === "dismissed") return "Complaint dismissed";
-    return "Pending review";
-}
-
-function adminActionMessage(report) {
-    const resolution = String(report.resolution_action || "").toLowerCase();
-    if (resolution === "warning") {
-        return "The admin reviewed your complaint and issued a warning.";
-    }
-    if (resolution === "ban") {
-        return "The admin reviewed your complaint and banned the reported user.";
-    }
-    if (resolution === "remove") {
-        return "The admin reviewed your complaint and removed the reported user from the platform.";
-    }
-    if (resolution === "activate") {
-        return "The admin reviewed the case and reactivated the account.";
-    }
-    if (report.status === "dismissed") {
-        return "The admin reviewed this report and dismissed it.";
-    }
-    if (report.status === "resolved") {
-        return "The admin reviewed this report and completed an action.";
-    }
-    return "Your complaint or review is waiting for admin review.";
-}
-
-function renderReportStatuses(reports) {
-    if (!customerReportsStatusEl) return;
-    if (!reports.length) {
-        customerReportsStatusEl.innerHTML = "";
-        return;
-    }
-
-    customerReportsStatusEl.innerHTML = reports.map((report) => `
-        <article class="order-card">
-            <div class="order-card__top">
-                <div>
-                    <h3>${escapeHtml(report.report_type)} for Order #${Number(report.order_id) || 0}</h3>
-                    <p class="${statusClass(report.resolution_action || report.status)}">${escapeHtml(adminActionLabel(report.resolution_action || report.status))}</p>
-                </div>
-            </div>
-
-            <div class="order-card__meta">
-                <div><span>Against</span><strong>${escapeHtml(report.target_name || "User")} (${escapeHtml(report.target_role || "user")})</strong></div>
-                <div><span>Store</span><strong>${escapeHtml(report.store_name || "N/A")}</strong></div>
-                <div><span>Admin Review</span><strong>${escapeHtml(adminActionMessage(report))}</strong></div>
-                <div><span>Handled By</span><strong>${escapeHtml(report.resolved_by_name || (report.status === "pending" ? "Pending" : "Admin"))}</strong></div>
-            </div>
-
-            <div class="order-card__section">
-                <span>Your Message</span>
-                <strong>${escapeHtml(report.message)}</strong>
-            </div>
-
-            <div class="order-card__section">
-                <span>Admin Notes</span>
-                <strong>${escapeHtml(report.admin_notes || "No admin note added yet.")}</strong>
-            </div>
-        </article>
-    `).join("");
 }
 
 function renderOrders(orders) {
@@ -284,11 +194,11 @@ async function deleteCustomerOrder(orderId) {
     try {
         const res = await fetch(`${API_BASE}/user/orders/${orderId}`, {
             method: "DELETE",
-            headers: { "Authorization": `Bearer ${customerToken}` }
+            headers: { "Authorization": `Bearer ${customerToken()}` }
         });
 
-        if (res.status === 401) {
-            localStorage.clear();
+        if (res.status === 401 || res.status === 403) {
+            window.AppAuth?.clearStoredSession?.();
             window.location.href = "login.html";
             return;
         }
@@ -342,13 +252,13 @@ async function submitCustomerReport(orderId, targetUserId) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${customerToken}`
+                "Authorization": `Bearer ${customerToken()}`
             },
             body: JSON.stringify(payload)
         });
 
-        if (res.status === 401) {
-            localStorage.clear();
+        if (res.status === 401 || res.status === 403) {
+            window.AppAuth?.clearStoredSession?.();
             window.location.href = "login.html";
             return;
         }
@@ -370,16 +280,14 @@ async function submitCustomerReport(orderId, targetUserId) {
 
 async function loadCustomerOrders() {
     try {
-        const [orders, reports] = await Promise.all([fetchOrders(), fetchMyReports()]);
-        if (!orders || !reports) return;
+        const orders = await fetchOrders();
+        if (!orders) return;
         renderSummary(orders);
-        renderReportStatuses(reports);
         if (!isCustomerReportEditing()) {
             renderOrders(orders);
         }
     } catch (e) {
         if (customerSummaryEl) customerSummaryEl.innerHTML = "";
-        if (customerReportsStatusEl) customerReportsStatusEl.innerHTML = "";
         if (customerListEl) customerListEl.innerHTML = `<div class="orders-empty">${escapeHtml(e.message)}</div>`;
         showFeedback(e.message, "error");
     }
@@ -400,7 +308,16 @@ if (customerListEl) {
     });
 }
 
-loadCustomerOrders();
+async function initCustomerOrdersPage() {
+    const session = await window.AppAuth?.validateCurrentSession?.({
+        expectedRole: "customer",
+        afterLogin: "customer-orders.html"
+    });
+    if (!session?.user) return;
+    loadCustomerOrders();
+}
+
+initCustomerOrdersPage();
 
 window.deleteCustomerOrder = deleteCustomerOrder;
 window.submitCustomerReport = submitCustomerReport;

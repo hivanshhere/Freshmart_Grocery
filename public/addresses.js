@@ -38,19 +38,17 @@ function setMsg(text) {
 }
 
 function authToken() {
-    return localStorage.getItem("authToken");
+    return window.AppAuth?.getToken ? window.AppAuth.getToken() : (localStorage.getItem("authToken") || "");
 }
 
-function ensureCustomerLogin() {
-    const role = localStorage.getItem("userRole");
-    const token = authToken();
-    if (role !== "customer" || !token) {
-        alert("Please login as a customer");
-        localStorage.setItem("afterLogin", "addresses.html");
-        window.location.href = "login.html";
-        return false;
-    }
-    return true;
+async function ensureCustomerLogin() {
+    if (!window.AppAuth?.validateCurrentSession) return false;
+
+    const session = await window.AppAuth.validateCurrentSession({
+        expectedRole: "customer",
+        afterLogin: "addresses.html"
+    });
+    return !!session?.user;
 }
 
 function formatFullAddress(a) {
@@ -185,7 +183,7 @@ function startEditAddress(address) {
 }
 
 async function deleteAddress(addressId) {
-    if (!ensureCustomerLogin()) return;
+    if (!await ensureCustomerLogin()) return;
     const id = Number(addressId);
     if (!Number.isFinite(id)) return;
 
@@ -212,7 +210,7 @@ async function deleteAddress(addressId) {
 }
 
 async function loadAddresses() {
-    if (!ensureCustomerLogin()) return;
+    if (!await ensureCustomerLogin()) return;
 
     try {
         const res = await fetch(`${API_BASE}/user/addresses`, {
@@ -227,12 +225,7 @@ async function loadAddresses() {
                     <p>Add your first delivery location using the form on the right.</p>
                 </div>
             `;
-            localStorage.removeItem("selectedAddressId");
             return;
-        }
-
-        if (!localStorage.getItem("selectedAddressId") && data[0]?.id) {
-            localStorage.setItem("selectedAddressId", String(data[0].id));
         }
 
         addressListEl.innerHTML = "";
@@ -275,7 +268,7 @@ async function loadAddresses() {
 }
 
 async function saveAddress() {
-    if (!ensureCustomerLogin()) return;
+    if (!await ensureCustomerLogin()) return;
 
     const payload = validateAddressForm();
     if (!payload) return;
@@ -304,10 +297,6 @@ async function saveAddress() {
         }
 
         setMsg(data?.message || (isEdit ? "Address updated" : "Address saved"));
-        const selectedId = isEdit ? editingAddressId : data?.address?.id;
-        if (Number.isFinite(Number(selectedId))) {
-            localStorage.setItem("selectedAddressId", String(selectedId));
-        }
         resetAddressForm();
         await loadAddresses();
     } catch {
@@ -321,4 +310,6 @@ if (customerNameEl && !customerNameEl.value) {
     if (n) customerNameEl.value = toUppercaseValue(n);
 }
 
-loadAddresses();
+ensureCustomerLogin().then((ok) => {
+    if (ok) loadAddresses();
+});

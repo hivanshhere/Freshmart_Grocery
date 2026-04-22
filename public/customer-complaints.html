@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Complaints</title>
+    <link rel="stylesheet" href="storestyle.css">
+    <link rel="stylesheet" href="orders.css">
+</head>
+<body>
+
+<header class="main-header">
+    <h1>All Complaints</h1>
+    <nav class="nav-menu">
+        <a href="customer-orders.html">My Orders</a>
+        <a href="stores.html">Stores</a>
+        <a href="cart.html">Cart</a>
+        <a href="#" data-nav="logout" style="display:none;">Logout</a>
+    </nav>
+</header>
+
+<main class="orders-shell">
+    <section class="orders-hero">
+        <div>
+            <p class="orders-hero__eyebrow">Review history</p>
+            <h2>All complaints and reviews</h2>
+            <p>See every complaint or review you have filed, along with the order details and the latest admin status for that specific order.</p>
+        </div>
+        <div class="orders-hero__actions">
+            <a class="orders-btn orders-btn--ghost" href="customer-orders.html">Back To Orders</a>
+        </div>
+    </section>
+
+    <div id="customerComplaintsFeedback"></div>
+
+    <section class="orders-summary" id="customerComplaintsSummary"></section>
+
+    <section class="orders-list orders-list--single" id="customerComplaintsList"></section>
+</main>
+
+<script src="auth.js"></script>
+<script src="nav.js"></script>
+<script src="customer-complaints.js"></script>
+</body>
+</html>
