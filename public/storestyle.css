@@ -58,6 +58,15 @@ line-height:1.7;
 color:rgba(0,0,0,0.68);
 }
 
+.stores-status{
+max-width:1100px;
+margin:0 auto;
+padding:0 40px 4px;
+color:#215230;
+font-size:15px;
+font-weight:700;
+}
+
 .main-header{
 display:flex;
 justify-content:space-between;
@@ -403,6 +412,10 @@ color:#17311f;
 @media (max-width: 600px){
 	.stores-hero{
 		padding:24px 18px 8px;
+	}
+
+	.stores-status{
+		padding:0 18px 4px;
 	}
 
 	.stores-hero h2{

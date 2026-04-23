@@ -7,6 +7,8 @@ const storeDisplayIdEl = document.getElementById("storeDisplayId");
 const createStoreSectionEl = document.getElementById("createStoreSection");
 const editStoreSectionEl = document.getElementById("editStoreSection");
 const editStoreNameInput = document.getElementById("editStoreName");
+const storeLatitudeEl = document.getElementById("storeLatitude");
+const storeLongitudeEl = document.getElementById("storeLongitude");
 const addProductBtn = document.getElementById("addProductBtn");
 const ownerProductListEl = document.getElementById("ownerProductList");
 const deliveryAvailableEl = document.getElementById("deliveryAvailable");
@@ -121,6 +123,8 @@ function setStoreUi(store) {
         storeDisplayIdEl.innerText = "-";
         createStoreSectionEl.style.display = "block";
         editStoreSectionEl.style.display = "none";
+        storeLatitudeEl.value = "";
+        storeLongitudeEl.value = "";
         addProductBtn.disabled = true;
         ownerProductListEl.innerHTML = "";
         slotListEl.innerHTML = "";
@@ -132,6 +136,8 @@ function setStoreUi(store) {
     createStoreSectionEl.style.display = "none";
     editStoreSectionEl.style.display = "block";
     editStoreNameInput.value = store.store_name;
+    storeLatitudeEl.value = store.latitude ?? "";
+    storeLongitudeEl.value = store.longitude ?? "";
     addProductBtn.disabled = false;
 
     localStorage.setItem("storeId", String(store.id));
@@ -293,6 +299,39 @@ async function saveDeliverySettings() {
     }
 }
 
+async function saveStoreLocation() {
+    if (!currentStore) {
+        setMsg("Create your store first", "error");
+        return;
+    }
+
+    const latitude = Number(storeLatitudeEl.value);
+    const longitude = Number(storeLongitudeEl.value);
+
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+        setMsg("Enter a valid latitude", "error");
+        return;
+    }
+
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+        setMsg("Enter a valid longitude", "error");
+        return;
+    }
+
+    try {
+        const data = await fetchJson(`${API_BASE}/owner/store/location`, {
+            method: "PATCH",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ latitude, longitude })
+        });
+        currentStore = data.store;
+        setStoreUi(currentStore);
+        setMsg(data.message || "Store location updated", "success");
+    } catch (e) {
+        setMsg(e.message, "error");
+    }
+}
+
 async function addProduct(event) {
     event?.preventDefault();
 
@@ -401,6 +440,7 @@ if (productFormEl) {
 
 window.createStore = createStore;
 window.updateStoreName = updateStoreName;
+window.saveStoreLocation = saveStoreLocation;
 window.saveDeliverySettings = saveDeliverySettings;
 window.removeProduct = removeProduct;
 window.addTimeSlot = addTimeSlot;

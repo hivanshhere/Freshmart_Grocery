@@ -47,6 +47,19 @@
 								<input type="text" id="editStoreName" placeholder="Enter new store name">
 							</div>
 							<button class="action-btn" type="button" onclick="updateStoreName()">Update Name</button>
+
+							<div class="form-grid" style="margin-top:18px;">
+								<div class="form-field">
+									<label for="storeLatitude">Store Latitude</label>
+									<input type="number" id="storeLatitude" step="0.0000001" placeholder="e.g. 28.6139000">
+								</div>
+								<div class="form-field">
+									<label for="storeLongitude">Store Longitude</label>
+									<input type="number" id="storeLongitude" step="0.0000001" placeholder="e.g. 77.2090000">
+								</div>
+							</div>
+							<p class="help-text">Customers will only see your store if these coordinates are saved and they are within 5 km of your store.</p>
+							<button class="action-btn" type="button" onclick="saveStoreLocation()">Save Store Location</button>
 						</div>
 					</div>
 				</div>

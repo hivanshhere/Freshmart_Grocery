@@ -87,6 +87,31 @@ function formatCurrency(value) {
     return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
 }
 
+function isValidLatitude(value) {
+    return Number.isFinite(value) && value >= -90 && value <= 90;
+}
+
+function isValidLongitude(value) {
+    return Number.isFinite(value) && value >= -180 && value <= 180;
+}
+
+function calculateDistanceInKm(latitude1, longitude1, latitude2, longitude2) {
+    const toRadians = (degrees) => (degrees * Math.PI) / 180;
+    const earthRadiusKm = 6371;
+    const latDiff = toRadians(latitude2 - latitude1);
+    const lonDiff = toRadians(longitude2 - longitude1);
+    const startLat = toRadians(latitude1);
+    const endLat = toRadians(latitude2);
+
+    const a =
+        Math.sin(latDiff / 2) * Math.sin(latDiff / 2) +
+        Math.cos(startLat) * Math.cos(endLat) *
+        Math.sin(lonDiff / 2) * Math.sin(lonDiff / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadiusKm * c;
+}
+
 async function ensureDatabaseExists() {
     const conn = await mysql.createConnection({
         host: DB_HOST,
@@ -159,7 +184,9 @@ async function initDb() {
             delivery_available BOOLEAN DEFAULT 0,
             delivery_charge INT DEFAULT 0,
             min_order_free_delivery INT DEFAULT 0,
-            pickup_available BOOLEAN DEFAULT 1
+            pickup_available BOOLEAN DEFAULT 1,
+            latitude DECIMAL(10,7) DEFAULT NULL,
+            longitude DECIMAL(10,7) DEFAULT NULL
         )
     `);
 
@@ -295,6 +322,8 @@ async function initDb() {
 
     try { await dbp.query("ALTER TABLE users ADD UNIQUE KEY uniq_users_email (email)"); } catch {}
     try { await dbp.query("ALTER TABLE stores ADD UNIQUE KEY uniq_stores_owner (owner_id)"); } catch {}
+    try { await dbp.query("ALTER TABLE stores ADD COLUMN latitude DECIMAL(10,7) DEFAULT NULL"); } catch {}
+    try { await dbp.query("ALTER TABLE stores ADD COLUMN longitude DECIMAL(10,7) DEFAULT NULL"); } catch {}
     try { await dbp.query("ALTER TABLE time_slots ADD UNIQUE KEY uniq_time_slot (store_id, slot_time)"); } catch {}
 
     await ensureAdminAccount();
@@ -347,7 +376,8 @@ async function getOwnerStore(ownerId) {
 
 async function getActiveStoreById(storeId) {
     const [rows] = await dbp.query(
-        `SELECT s.id, s.owner_id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available
+        `SELECT s.id, s.owner_id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available,
+                s.latitude, s.longitude
          FROM stores s
          JOIN users u ON u.id = s.owner_id
          WHERE s.id = ? AND u.account_status NOT IN ('banned', 'removed')`,
@@ -593,14 +623,46 @@ app.get("/auth/me", requireAuth, asyncHandler(async (req, res) => {
 
 // ================= PUBLIC CUSTOMER-FACING APIs =================
 app.get("/stores", asyncHandler(async (req, res) => {
+    const customerLatitude = Number(req.query.latitude);
+    const customerLongitude = Number(req.query.longitude);
+
+    if (!isValidLatitude(customerLatitude) || !isValidLongitude(customerLongitude)) {
+        return res.status(400).json({ message: "Valid customer latitude and longitude are required" });
+    }
+
     const [rows] = await dbp.query(
-        `SELECT s.id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available
+        `SELECT s.id, s.store_name, s.delivery_available, s.delivery_charge, s.min_order_free_delivery, s.pickup_available,
+                s.latitude, s.longitude
          FROM stores s
          JOIN users u ON u.id = s.owner_id
          WHERE u.account_status NOT IN ('banned', 'removed')
+           AND s.latitude IS NOT NULL
+           AND s.longitude IS NOT NULL
          ORDER BY s.id DESC`
     );
-    res.json(rows);
+
+    const nearbyStores = rows
+        .map((store) => {
+            const storeLatitude = Number(store.latitude);
+            const storeLongitude = Number(store.longitude);
+            const distance_km = calculateDistanceInKm(
+                customerLatitude,
+                customerLongitude,
+                storeLatitude,
+                storeLongitude
+            );
+
+            return {
+                ...store,
+                latitude: storeLatitude,
+                longitude: storeLongitude,
+                distance_km: Number(distance_km.toFixed(2))
+            };
+        })
+        .filter((store) => store.distance_km <= 5)
+        .sort((a, b) => a.distance_km - b.distance_km);
+
+    res.json(nearbyStores);
 }));
 
 app.get("/store/:storeId", asyncHandler(async (req, res) => {
@@ -680,6 +742,26 @@ app.patch("/owner/store", requireAuth, requireOwner, asyncHandler(async (req, re
     await dbp.query("UPDATE stores SET store_name=? WHERE owner_id=?", [storeNameCaps, req.auth.user.id]);
     const updated = await getOwnerStore(req.auth.user.id);
     res.json({ message: "Store updated", store: updated });
+}));
+
+app.patch("/owner/store/location", requireAuth, requireOwner, asyncHandler(async (req, res) => {
+    const latitude = Number(req.body?.latitude);
+    const longitude = Number(req.body?.longitude);
+
+    if (!isValidLatitude(latitude) || !isValidLongitude(longitude)) {
+        return res.status(400).json({ message: "Enter a valid latitude and longitude" });
+    }
+
+    const store = await getOwnerStore(req.auth.user.id);
+    if (!store) return res.status(404).json({ message: "Store not found" });
+
+    await dbp.query(
+        "UPDATE stores SET latitude = ?, longitude = ? WHERE owner_id = ?",
+        [latitude, longitude, req.auth.user.id]
+    );
+
+    const updated = await getOwnerStore(req.auth.user.id);
+    res.json({ message: "Store location updated", store: updated });
 }));
 
 app.get("/owner/products", requireAuth, requireOwner, asyncHandler(async (req, res) => {

@@ -29,6 +29,10 @@
         <p>Browse nearby stores, compare delivery and pickup availability, and open the one you want to shop from.</p>
     </section>
 
+    <section class="stores-status" id="locationStatus">
+        Checking your location to find stores within 5 km...
+    </section>
+
     <section class="store-container stores-grid" id="storeList">
         <!-- Stores will be loaded here -->
     </section>
@@ -49,67 +53,91 @@
 
 // Fetch stores on page load
 window.onload = function () {
-
+    const statusBox = document.getElementById("locationStatus");
     const container = document.getElementById("storeList");
-    if (!container) return;
+    if (!container || !statusBox) return;
 
-    fetch("http://localhost:3000/stores")
-    .then(res => res.json())
-    .then(data => {
+    if (!navigator.geolocation) {
+        statusBox.innerText = "Location is not supported in this browser.";
+        showEmptyState("Location is required", "Please use a browser that supports location access.");
+        return;
+    }
 
-        if (!data || data.length === 0) {
-            container.innerHTML = `
-                <div class="store-card store-card--empty">
-                    <h2>No stores available</h2>
-                    <p>Check back soon. New stores will appear here once they are added.</p>
-                </div>
-            `;
-            return;
-        }
-
-        container.innerHTML = "";
-
-        data.forEach(store => {
-
-            let div = document.createElement("div");
-            div.classList.add("store-card");
-
-            div.innerHTML = `
-                <h2 class="store-card__title">${store.store_name}</h2>
-                <p class="store-card__rating">4.2 rating &bull; Nearby</p>
-                <div class="store-card__badges">
-                    <span class="store-badge ${store.delivery_available ? "store-badge--on" : "store-badge--off"}">Delivery ${store.delivery_available ? "On" : "Off"}</span>
-                    <span class="store-badge ${store.pickup_available ? "store-badge--on" : "store-badge--off"}">Pickup ${store.pickup_available ? "On" : "Off"}</span>
-                </div>
-                ${store.delivery_available ? `
-                    <p class="store-card__meta">
-                        Delivery fee: ₹${Number(store.delivery_charge || 0)} &bull; Free above ₹${Number(store.min_order_free_delivery || 0)}
-                    </p>
-                ` : ""}
-            `;
-
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.innerText = "View Store";
-            btn.classList.add("store-card__button");
-            btn.onclick = () => openStore(store.id, store.store_name);
-            div.appendChild(btn);
-
-            container.appendChild(div);
-
-        });
-
-    })
-    .catch(err => {
-        console.log(err);
-        container.innerHTML = `
-            <div class="store-card store-card--empty">
-                <h2>Error loading stores</h2>
-                <p>Please refresh the page and try again.</p>
-            </div>
-        `;
+    navigator.geolocation.getCurrentPosition(loadNearbyStores, handleLocationError, {
+        enableHighAccuracy: true,
+        timeout: 10000
     });
 
+    function loadNearbyStores(position) {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+
+        statusBox.innerText = "Showing stores within 5 km of your current location.";
+
+        fetch(`http://localhost:3000/stores?latitude=${latitude}&longitude=${longitude}`)
+        .then(async res => {
+            const data = await res.json().catch(() => []);
+            if (!res.ok) {
+                throw new Error(data.message || "Could not load nearby stores");
+            }
+            return data;
+        })
+        .then(data => {
+            if (!data || data.length === 0) {
+                showEmptyState("No nearby stores found", "No stores are available within 5 km of your current location.");
+                return;
+            }
+
+            container.innerHTML = "";
+
+            data.forEach(store => {
+                let div = document.createElement("div");
+                div.classList.add("store-card");
+
+                div.innerHTML = `
+                    <h2 class="store-card__title">${store.store_name}</h2>
+                    <p class="store-card__rating">${Number(store.distance_km || 0).toFixed(2)} km away</p>
+                    <div class="store-card__badges">
+                        <span class="store-badge ${store.delivery_available ? "store-badge--on" : "store-badge--off"}">Delivery ${store.delivery_available ? "On" : "Off"}</span>
+                        <span class="store-badge ${store.pickup_available ? "store-badge--on" : "store-badge--off"}">Pickup ${store.pickup_available ? "On" : "Off"}</span>
+                    </div>
+                    ${store.delivery_available ? `
+                        <p class="store-card__meta">
+                            Delivery fee: Rs. ${Number(store.delivery_charge || 0)} &bull; Free above Rs. ${Number(store.min_order_free_delivery || 0)}
+                        </p>
+                    ` : ""}
+                `;
+
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.innerText = "View Store";
+                btn.classList.add("store-card__button");
+                btn.onclick = () => openStore(store.id, store.store_name);
+                div.appendChild(btn);
+
+                container.appendChild(div);
+            });
+        })
+        .catch(err => {
+            console.log(err);
+            statusBox.innerText = "Could not load nearby stores right now.";
+            showEmptyState("Error loading stores", "Please refresh the page and try again.");
+        });
+    }
+
+    function handleLocationError() {
+        statusBox.innerText = "Location access was not allowed.";
+        showEmptyState("Location permission needed", "Please allow location access so we can show stores within 5 km of you.");
+    }
+
+    function showEmptyState(title, text) {
+        container.innerHTML = `
+            <div class="store-card store-card--empty">
+                <h2>${title}</h2>
+                <p>${text}</p>
+            </div>
+        `;
+    }
 };
 
 
