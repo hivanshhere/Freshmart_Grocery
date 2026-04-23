@@ -299,22 +299,62 @@ async function saveDeliverySettings() {
     }
 }
 
+function useCurrentLocation() {
+    if (!currentStore) {
+        setMsg("Create your store first", "error");
+        return;
+    }
+
+    if (!navigator.geolocation) {
+        setMsg("Location is not supported in this browser", "error");
+        return;
+    }
+
+    setMsg("Getting your current location...");
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            storeLatitudeEl.value = position.coords.latitude.toFixed(7);
+            storeLongitudeEl.value = position.coords.longitude.toFixed(7);
+            setMsg("Current location added. Click Save Store Location to store it.", "success");
+        },
+        () => {
+            setMsg("Could not get your location. Please allow location access and try again.", "error");
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000
+        }
+    );
+}
+
 async function saveStoreLocation() {
     if (!currentStore) {
         setMsg("Create your store first", "error");
         return;
     }
 
-    const latitude = Number(storeLatitudeEl.value);
-    const longitude = Number(storeLongitudeEl.value);
+    const rawLatitude = String(storeLatitudeEl.value ?? "").trim();
+    const rawLongitude = String(storeLongitudeEl.value ?? "").trim();
+
+    if (!rawLatitude || !rawLongitude) {
+        setMsg("Please enter store latitude and longitude before saving.", "error");
+        alert("Error: Please enter your store latitude and longitude before saving.");
+        return;
+    }
+
+    const latitude = Number(rawLatitude);
+    const longitude = Number(rawLongitude);
 
     if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
         setMsg("Enter a valid latitude", "error");
+        alert("Error: Enter a valid latitude.");
         return;
     }
 
     if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
         setMsg("Enter a valid longitude", "error");
+        alert("Error: Enter a valid longitude.");
         return;
     }
 
@@ -327,6 +367,7 @@ async function saveStoreLocation() {
         currentStore = data.store;
         setStoreUi(currentStore);
         setMsg(data.message || "Store location updated", "success");
+        alert("Yes, your location has been saved successfully.");
     } catch (e) {
         setMsg(e.message, "error");
     }
@@ -440,6 +481,7 @@ if (productFormEl) {
 
 window.createStore = createStore;
 window.updateStoreName = updateStoreName;
+window.useCurrentLocation = useCurrentLocation;
 window.saveStoreLocation = saveStoreLocation;
 window.saveDeliverySettings = saveDeliverySettings;
 window.removeProduct = removeProduct;
