@@ -26,11 +26,11 @@
     <section class="stores-hero">
         <p class="stores-hero__eyebrow">Choose your store</p>
         <h2>Nearby Grocery Stores</h2>
-        <p>Browse nearby stores, compare delivery and pickup availability, and open the one you want to shop from.</p>
+        <p>See stores near you, check delivery or pickup options, and choose where you’d like to shop.</p>
     </section>
 
     <section class="stores-status" id="locationStatus">
-        Checking your location to find stores within 5 km...
+        Finding stores near you....
     </section>
 
     <section class="store-container stores-grid" id="storeList">
@@ -72,7 +72,7 @@ window.onload = function () {
         const latitude = position.coords.latitude;
         const longitude = position.coords.longitude;
 
-        statusBox.innerText = "Showing stores within 5 km of your current location.";
+        statusBox.innerText = "Showing stores near you.";
 
         fetch(`http://localhost:3000/stores?latitude=${latitude}&longitude=${longitude}`)
         .then(async res => {
