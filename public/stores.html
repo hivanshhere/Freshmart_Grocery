@@ -29,6 +29,8 @@
         <p>See stores near you, check delivery or pickup options, and choose where you’d like to shop.</p>
     </section>
 
+    <section id="customerAccountWarning" class="store-account-warning" style="display:none;"></section>
+
     <section class="stores-status" id="locationStatus">
         Finding stores near you....
     </section>
@@ -44,11 +46,64 @@
 // Login check: only logged-in users can access stores
 (async function requireLogin(){
     if (!window.AppAuth?.validateCurrentSession) return;
-    await window.AppAuth.validateCurrentSession({
+    const session = await window.AppAuth.validateCurrentSession({
         expectedRole: "customer",
         afterLogin: "stores.html"
     });
+    showCustomerWarning(session?.user, session?.warning_actions || []);
 })();
+
+function escapeWarningHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function getWarningText(warning) {
+    return String(warning?.notes || warning?.admin_notes || warning?.message || "").trim();
+}
+
+function showCustomerWarning(profile, warningActions) {
+    const warningEl = document.getElementById("customerAccountWarning");
+    if (!warningEl) return;
+
+    const status = String(profile?.account_status || localStorage.getItem("accountStatus") || "active").toLowerCase();
+    const warningCount = Number(profile?.warning_count ?? localStorage.getItem("warningCount") ?? 0);
+    const banReason = String(profile?.ban_reason || localStorage.getItem("banReason") || "").trim();
+    const warnings = Array.isArray(warningActions)
+        ? warningActions.filter((warning) => getWarningText(warning))
+        : [];
+
+    if (status !== "warned" && warningCount <= 0 && !banReason && warnings.length === 0) {
+        warningEl.style.display = "none";
+        warningEl.innerHTML = "";
+        return;
+    }
+
+    const warningItems = warnings.length
+        ? warnings.map((warning) => `
+            <div class="store-account-warning__item">
+                <span>Warning Message</span>
+                <strong>${escapeWarningHtml(getWarningText(warning))}</strong>
+            </div>
+        `).join("")
+        : `
+            <div class="store-account-warning__item">
+                <span>Warning Message</span>
+                <strong>${escapeWarningHtml(banReason || "Please review your recent activity and follow the platform rules to avoid stronger action.")}</strong>
+            </div>
+        `;
+
+    warningEl.style.display = "block";
+    warningEl.innerHTML = `
+        <h3>Admin Warning On Your Account</h3>
+        <p>This is a warning from the admin. Please read the exact message below.</p>
+        ${warningItems}
+    `;
+}
 
 
 // Fetch stores on page load

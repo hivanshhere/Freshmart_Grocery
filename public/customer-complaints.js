@@ -3,6 +3,7 @@ const API_BASE = "http://localhost:3000";
 const complaintsFeedbackEl = document.getElementById("customerComplaintsFeedback");
 const complaintsSummaryEl = document.getElementById("customerComplaintsSummary");
 const complaintsListEl = document.getElementById("customerComplaintsList");
+const customerAccountWarningEl = document.getElementById("customerAccountWarning");
 
 function customerToken() {
     return window.AppAuth?.getToken ? window.AppAuth.getToken() : (localStorage.getItem("authToken") || "");
@@ -41,6 +42,48 @@ function showFeedback(message, type) {
         return;
     }
     complaintsFeedbackEl.innerHTML = `<div class="orders-feedback orders-feedback--${type === "error" ? "error" : "success"}">${escapeHtml(message)}</div>`;
+}
+
+function warningText(warning) {
+    return String(warning?.notes || warning?.admin_notes || warning?.message || "").trim();
+}
+
+function showCustomerWarning(profile, warningActions = []) {
+    if (!customerAccountWarningEl) return;
+
+    const status = String(profile?.account_status || localStorage.getItem("accountStatus") || "active").toLowerCase();
+    const warningCount = Number(profile?.warning_count ?? localStorage.getItem("warningCount") ?? 0);
+    const banReason = String(profile?.ban_reason || localStorage.getItem("banReason") || "").trim();
+    const warnings = Array.isArray(warningActions)
+        ? warningActions.filter((warning) => warningText(warning))
+        : [];
+
+    if (status !== "warned" && warningCount <= 0 && !banReason && warnings.length === 0) {
+        customerAccountWarningEl.style.display = "none";
+        customerAccountWarningEl.innerHTML = "";
+        return;
+    }
+
+    const warningItems = warnings.length
+        ? warnings.map((warning) => `
+            <div class="account-warning__item">
+                <span>Warning Message</span>
+                <strong>${escapeHtml(warningText(warning))}</strong>
+            </div>
+        `).join("")
+        : `
+            <div class="account-warning__item">
+                <span>Warning Message</span>
+                <strong>${escapeHtml(banReason || "Please review your recent activity and follow the platform rules to avoid stronger action.")}</strong>
+            </div>
+        `;
+
+    customerAccountWarningEl.style.display = "block";
+    customerAccountWarningEl.innerHTML = `
+        <h3>Admin Warning On Your Account</h3>
+        <p>This is a warning from the admin. Please read the exact message below.</p>
+        ${warningItems}
+    `;
 }
 
 function adminActionLabel(action, status) {
@@ -200,6 +243,7 @@ async function initComplaintsPage() {
         afterLogin: "customer-complaints.html"
     });
     if (!session?.user) return;
+    showCustomerWarning(session.user, session.warning_actions || []);
     loadComplaintsPage();
 }
 

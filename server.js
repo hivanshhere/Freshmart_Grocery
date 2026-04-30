@@ -598,27 +598,40 @@ app.post("/auth/logout", asyncHandler(async (req, res) => {
 app.get("/auth/me", requireAuth, asyncHandler(async (req, res) => {
     const user = userDto(req.auth.user);
     let moderationReports = [];
+    let warningActions = [];
 
     if (req.auth.user.role === "owner" || req.auth.user.role === "customer") {
-        const [rows] = await dbp.query(
-            `SELECT mr.id, mr.order_id, mr.report_type, mr.message, mr.status, mr.admin_notes,
-                    mr.created_at, mr.updated_at, mr.resolution_action, mr.rating,
-                    reporter.name AS reporter_name, reporter.role AS reporter_role,
-                    s.store_name,
-                    admin_user.name AS resolved_by_name
-             FROM moderation_reports mr
-             JOIN users reporter ON reporter.id = mr.reporter_id
-             LEFT JOIN stores s ON s.id = mr.store_id
-             LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by
-             WHERE mr.target_user_id = ?
-             ORDER BY mr.updated_at DESC, mr.created_at DESC
-             LIMIT 10`,
-            [req.auth.user.id]
-        );
-        moderationReports = rows;
+        const [[reportRows], [actionRows]] = await Promise.all([
+            dbp.query(
+                `SELECT mr.id, mr.order_id, mr.report_type, mr.message, mr.status, mr.admin_notes,
+                        mr.created_at, mr.updated_at, mr.resolution_action, mr.rating,
+                        reporter.name AS reporter_name, reporter.role AS reporter_role,
+                        s.store_name,
+                        admin_user.name AS resolved_by_name
+                 FROM moderation_reports mr
+                 JOIN users reporter ON reporter.id = mr.reporter_id
+                 LEFT JOIN stores s ON s.id = mr.store_id
+                 LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by
+                 WHERE mr.target_user_id = ?
+                 ORDER BY mr.updated_at DESC, mr.created_at DESC
+                 LIMIT 10`,
+                [req.auth.user.id]
+            ),
+            dbp.query(
+                `SELECT ma.id, ma.action_type, ma.notes, ma.created_at,
+                        admin_user.name AS admin_name
+                 FROM moderation_actions ma
+                 JOIN users admin_user ON admin_user.id = ma.admin_id
+                 WHERE ma.target_user_id = ? AND ma.action_type = 'warning'
+                 ORDER BY ma.created_at DESC`,
+                [req.auth.user.id]
+            )
+        ]);
+        moderationReports = reportRows;
+        warningActions = actionRows;
     }
 
-    res.json({ user, moderation_reports: moderationReports });
+    res.json({ user, moderation_reports: moderationReports, warning_actions: warningActions });
 }));
 
 // ================= PUBLIC CUSTOMER-FACING APIs =================

@@ -35,7 +35,11 @@ function formatAdminAction(action) {
     return "Under Review";
 }
 
-function showOwnerNotice(profile, moderationReports = []) {
+function formatWarningMessage(warning) {
+    return String(warning?.notes || warning?.admin_notes || warning?.message || "").trim();
+}
+
+function showOwnerNotice(profile, moderationReports = [], warningActions = []) {
     if (!ownerAccountNoticeEl) return;
 
     const status = String(profile?.account_status || localStorage.getItem("accountStatus") || "active").toLowerCase();
@@ -44,13 +48,31 @@ function showOwnerNotice(profile, moderationReports = []) {
     const visibleReports = Array.isArray(moderationReports)
         ? moderationReports.filter((report) => ["resolved", "dismissed"].includes(String(report.status || "").toLowerCase()))
         : [];
+    const visibleWarnings = Array.isArray(warningActions)
+        ? warningActions.filter((warning) => formatWarningMessage(warning))
+        : [];
 
-    if (status !== "warned" && warningCount <= 0 && visibleReports.length === 0) {
+    if (status !== "warned" && warningCount <= 0 && visibleReports.length === 0 && visibleWarnings.length === 0) {
         ownerAccountNoticeEl.style.display = "none";
         ownerAccountNoticeEl.innerHTML = "";
         ownerAccountNoticeEl.className = "owner-notice";
         return;
     }
+
+    const warningsHtml = visibleWarnings.length
+        ? `
+            <div class="owner-notice__list">
+                ${visibleWarnings.map((warning) => `
+                    <div class="owner-notice__item">
+                        <h4>Warning From Admin</h4>
+                        <div class="owner-notice__meta">Sent by ${escapeHtml(warning.admin_name || "Admin")}</div>
+                        <span class="owner-notice__label">Warning Message</span>
+                        <p>${escapeHtml(formatWarningMessage(warning))}</p>
+                    </div>
+                `).join("")}
+            </div>
+        `
+        : "";
 
     const reportsHtml = visibleReports.length
         ? `
@@ -74,7 +96,8 @@ function showOwnerNotice(profile, moderationReports = []) {
     ownerAccountNoticeEl.innerHTML = `
         <h3>Admin Warning On Your Account</h3>
         <p>Your store owner account has received ${warningCount} warning${warningCount === 1 ? "" : "s"} from the admin.</p>
-        <p>${escapeHtml(banReason || "Please review your recent activity and follow the platform rules to avoid stronger action.")}</p>
+        <p><strong>Warning:</strong> ${escapeHtml(banReason || "Please review your recent activity and follow the platform rules to avoid stronger action.")}</p>
+        ${warningsHtml}
         ${reportsHtml}
     `;
 }
@@ -203,12 +226,13 @@ async function loadStoreAndProducts() {
 
         const ownerProfile = profileData?.user || null;
         const moderationReports = profileData?.moderation_reports || [];
+        const warningActions = profileData?.warning_actions || [];
         if (ownerProfile) {
             localStorage.setItem("accountStatus", ownerProfile.account_status || "active");
             localStorage.setItem("warningCount", String(ownerProfile.warning_count || 0));
             localStorage.setItem("banReason", ownerProfile.ban_reason || "");
         }
-        showOwnerNotice(ownerProfile, moderationReports);
+        showOwnerNotice(ownerProfile, moderationReports, warningActions);
 
         currentStore = storeData;
         setStoreUi(currentStore);
