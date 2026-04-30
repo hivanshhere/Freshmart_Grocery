@@ -3,6 +3,7 @@ const API_BASE = "http://localhost:3000";
 const feedbackEl = document.getElementById("ownerOrdersFeedback");
 const summaryEl = document.getElementById("ownerOrdersSummary");
 const listEl = document.getElementById("ownerOrdersList");
+const ownerReviewMessagesEl = document.getElementById("ownerReviewMessages");
 const logoutBtn = document.getElementById("ownerLogoutBtn");
 
 let currentStore = null;
@@ -71,6 +72,38 @@ function showFeedback(message, type) {
         return;
     }
     feedbackEl.innerHTML = `<div class="orders-feedback orders-feedback--${type === "error" ? "error" : "success"}">${escapeHtml(message)}</div>`;
+}
+
+function renderOwnerReviewMessages(reports = []) {
+    if (!ownerReviewMessagesEl) return;
+
+    const reviewMessages = Array.isArray(reports)
+        ? reports.filter((report) => {
+            const isReview = String(report.report_type || "").toLowerCase() === "review";
+            const isMessage = String(report.resolution_action || "").toLowerCase() === "message";
+            return isReview && isMessage && String(report.admin_notes || "").trim();
+        })
+        : [];
+
+    if (!reviewMessages.length) {
+        ownerReviewMessagesEl.style.display = "none";
+        ownerReviewMessagesEl.innerHTML = "";
+        return;
+    }
+
+    ownerReviewMessagesEl.style.display = "block";
+    ownerReviewMessagesEl.innerHTML = `
+        <details class="account-review__details">
+            <summary>Review${reviewMessages.length > 1 ? ` (${reviewMessages.length})` : ""}</summary>
+            <p>Please read the exact review message sent by the admin.</p>
+            ${reviewMessages.map((report) => `
+                <div class="account-review__item">
+                    <span>Review Message</span>
+                    <strong>${escapeHtml(report.admin_notes)}</strong>
+                </div>
+            `).join("")}
+        </details>
+    `;
 }
 
 async function fetchJson(url, options) {
@@ -342,6 +375,7 @@ async function initOwnerOrdersPage() {
         afterLogin: "owner-orders.html"
     });
     if (!session?.user) return;
+    renderOwnerReviewMessages(session.moderation_reports || []);
     loadOrders();
 }
 

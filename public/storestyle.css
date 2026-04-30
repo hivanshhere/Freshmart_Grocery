@@ -73,16 +73,27 @@ margin:6px auto 18px;
 padding:20px 22px;
 box-sizing:border-box;
 border-radius:20px;
-border:1px solid rgba(168,108,0,0.22);
-background:linear-gradient(135deg, #fff3c4 0%, #fffaf0 100%);
-box-shadow:0 16px 34px rgba(168,108,0,0.12);
-color:#6a4700;
+border:1px solid rgba(185,35,35,0.24);
+background:linear-gradient(135deg, #fde1df 0%, #fff4f3 100%);
+box-shadow:0 16px 34px rgba(185,35,35,0.12);
+color:#8c1f1a;
 }
 
 .store-account-warning h3{
 margin:0 0 8px;
 font-size:22px;
-color:#6a4700;
+color:#8c1f1a;
+}
+
+.store-account-warning__details summary{
+cursor:pointer;
+font-size:22px;
+font-weight:800;
+color:#8c1f1a;
+}
+
+.store-account-warning__details summary::marker{
+color:#8c1f1a;
 }
 
 .store-account-warning p{
@@ -94,7 +105,7 @@ font-weight:700;
 .store-account-warning__item{
 padding:14px 16px;
 border-radius:16px;
-border:1px solid rgba(168,108,0,0.18);
+border:1px solid rgba(185,35,35,0.18);
 background:rgba(255,255,255,0.72);
 }
 
@@ -115,7 +126,63 @@ text-transform:uppercase;
 display:block;
 font-size:16px;
 line-height:1.55;
-color:#3f2b00;
+color:#5f1410;
+}
+
+.store-account-review{
+max-width:1100px;
+margin:6px auto 18px;
+padding:20px 22px;
+box-sizing:border-box;
+border-radius:20px;
+border:1px solid rgba(31,122,69,0.20);
+background:linear-gradient(135deg, #e8f8ee 0%, #f5fff8 100%);
+box-shadow:0 16px 34px rgba(31,122,69,0.12);
+color:#17623a;
+}
+
+.store-account-review__details summary{
+cursor:pointer;
+font-size:22px;
+font-weight:800;
+color:#17623a;
+}
+
+.store-account-review__details summary::marker{
+color:#17623a;
+}
+
+.store-account-review p{
+margin:0 0 14px;
+line-height:1.6;
+font-weight:700;
+}
+
+.store-account-review__item{
+padding:14px 16px;
+border-radius:16px;
+border:1px solid rgba(31,122,69,0.16);
+background:rgba(255,255,255,0.76);
+}
+
+.store-account-review__item + .store-account-review__item{
+margin-top:10px;
+}
+
+.store-account-review__item span{
+display:block;
+margin-bottom:6px;
+font-size:12px;
+font-weight:800;
+letter-spacing:0.08em;
+text-transform:uppercase;
+}
+
+.store-account-review__item strong{
+display:block;
+font-size:16px;
+line-height:1.55;
+color:#124a2d;
 }
 
 .main-header{

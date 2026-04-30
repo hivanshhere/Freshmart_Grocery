@@ -32,6 +32,7 @@ function formatAdminAction(action) {
     if (normalized === "remove") return "Removed";
     if (normalized === "dismissed") return "Dismissed";
     if (normalized === "activate") return "Reactivated";
+    if (normalized === "message") return "Admin Message";
     return "Under Review";
 }
 
@@ -46,13 +47,18 @@ function showOwnerNotice(profile, moderationReports = [], warningActions = []) {
     const warningCount = Number(profile?.warning_count ?? localStorage.getItem("warningCount") ?? 0);
     const banReason = String(profile?.ban_reason || localStorage.getItem("banReason") || "").trim();
     const visibleReports = Array.isArray(moderationReports)
-        ? moderationReports.filter((report) => ["resolved", "dismissed"].includes(String(report.status || "").toLowerCase()))
+        ? moderationReports.filter((report) => {
+            const action = String(report.resolution_action || "").toLowerCase();
+            const statusValue = String(report.status || "").toLowerCase();
+            return action === "warning" && statusValue === "resolved";
+        })
         : [];
     const visibleWarnings = Array.isArray(warningActions)
         ? warningActions.filter((warning) => formatWarningMessage(warning))
         : [];
+    const hasWarning = status === "warned" || warningCount > 0 || Boolean(banReason) || visibleWarnings.length > 0;
 
-    if (status !== "warned" && warningCount <= 0 && visibleReports.length === 0 && visibleWarnings.length === 0) {
+    if (!hasWarning) {
         ownerAccountNoticeEl.style.display = "none";
         ownerAccountNoticeEl.innerHTML = "";
         ownerAccountNoticeEl.className = "owner-notice";
@@ -83,7 +89,7 @@ function showOwnerNotice(profile, moderationReports = [], warningActions = []) {
                         <div class="owner-notice__meta">Reported by ${escapeHtml(report.reporter_name || "Customer")} (${escapeHtml(report.reporter_role || "customer")})${report.store_name ? ` for ${escapeHtml(report.store_name)}` : ""}</div>
                         <span class="owner-notice__label">Customer Issue</span>
                         <p>${escapeHtml(report.message || "No details provided.")}</p>
-                        <span class="owner-notice__label">Admin Note</span>
+                        <span class="owner-notice__label">${String(report.resolution_action || "").toLowerCase() === "message" ? "Admin Message" : "Admin Note"}</span>
                         <p>${escapeHtml(report.admin_notes || "No admin note added.")}</p>
                     </div>
                 `).join("")}
@@ -92,13 +98,15 @@ function showOwnerNotice(profile, moderationReports = [], warningActions = []) {
         : "";
 
     ownerAccountNoticeEl.style.display = "block";
-    ownerAccountNoticeEl.className = "owner-notice owner-notice--warned";
+    ownerAccountNoticeEl.className = "owner-notice owner-notice--error";
     ownerAccountNoticeEl.innerHTML = `
-        <h3>Admin Warning On Your Account</h3>
-        <p>Your store owner account has received ${warningCount} warning${warningCount === 1 ? "" : "s"} from the admin.</p>
-        <p><strong>Warning:</strong> ${escapeHtml(banReason || "Please review your recent activity and follow the platform rules to avoid stronger action.")}</p>
-        ${warningsHtml}
-        ${reportsHtml}
+        <details class="owner-notice__details">
+            <summary>Warning${warningCount > 1 ? ` (${warningCount})` : ""}</summary>
+            ${hasWarning ? `<p>Your store owner account has received ${warningCount} warning${warningCount === 1 ? "" : "s"} from the admin.</p>` : ""}
+            ${hasWarning ? `<p><strong>Warning:</strong> ${escapeHtml(banReason || "Please review your recent activity and follow the platform rules to avoid stronger action.")}</p>` : ""}
+            ${warningsHtml}
+            ${reportsHtml}
+        </details>
     `;
 }
 

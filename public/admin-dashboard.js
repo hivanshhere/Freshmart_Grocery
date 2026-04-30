@@ -40,6 +40,7 @@ function statusClass(status) {
     if (normalized === "removed") return "status-pill status-pill--removed";
     if (normalized === "resolved") return "status-pill status-pill--resolved";
     if (normalized === "dismissed") return "status-pill status-pill--dismissed";
+    if (normalized === "message") return "status-pill status-pill--resolved";
     return "status-pill status-pill--placed";
 }
 
@@ -73,7 +74,9 @@ function renderReports(reports) {
         return;
     }
 
-    reportsEl.innerHTML = reports.map((report) => `
+    reportsEl.innerHTML = reports.map((report) => {
+        const isReview = String(report.report_type || "").toLowerCase() === "review";
+        return `
         <article class="admin-card">
             <div class="admin-card__top">
                 <div>
@@ -100,13 +103,15 @@ function renderReports(reports) {
             <input class="admin-card__note" id="reportNote-${report.id}" placeholder="Admin note for this action">
 
             <div class="admin-card__actions">
+                ${isReview ? `<button type="button" class="orders-btn orders-btn--primary" onclick="sendReviewMessage(${report.id})">Send Review Message</button>` : ""}
                 <button type="button" class="orders-btn orders-btn--primary" onclick="takeReportAction(${report.id}, ${Number(report.target_user_id) || 0}, 'warning')">Issue Warning</button>
                 <button type="button" class="orders-btn orders-btn--danger" onclick="takeReportAction(${report.id}, ${Number(report.target_user_id) || 0}, 'ban')">Ban User</button>
                 <button type="button" class="orders-btn orders-btn--danger" onclick="takeReportAction(${report.id}, ${Number(report.target_user_id) || 0}, 'remove')">Remove User</button>
                 <button type="button" class="orders-btn orders-btn--ghost" onclick="dismissReport(${report.id})">Dismiss Report</button>
             </div>
         </article>
-    `).join("");
+    `;
+    }).join("");
 }
 
 function renderUsers(users) {
@@ -220,6 +225,29 @@ async function takeReportAction(reportId, targetUserId, action) {
     }
 }
 
+async function sendReviewMessage(reportId) {
+    const note = String(document.getElementById(`reportNote-${reportId}`)?.value || "").trim();
+    if (!note) {
+        showFeedback("Enter the message to send about this review.", "error");
+        return;
+    }
+
+    try {
+        const data = await fetchJson(`${API_BASE}/admin/reports/${reportId}/message`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ notes: note })
+        });
+        showFeedback(data?.message || "Review message sent", "success");
+        await loadDashboard();
+    } catch (e) {
+        showFeedback(e.message, "error");
+    }
+}
+
 async function dismissReport(reportId) {
     const note = String(document.getElementById(`reportNote-${reportId}`)?.value || "").trim();
 
@@ -260,6 +288,7 @@ if (logoutBtn) {
 
 window.takeUserAction = takeUserAction;
 window.takeReportAction = takeReportAction;
+window.sendReviewMessage = sendReviewMessage;
 window.dismissReport = dismissReport;
 
 loadDashboard();

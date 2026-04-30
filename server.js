@@ -612,10 +612,10 @@ app.get("/auth/me", requireAuth, asyncHandler(async (req, res) => {
                  JOIN users reporter ON reporter.id = mr.reporter_id
                  LEFT JOIN stores s ON s.id = mr.store_id
                  LEFT JOIN users admin_user ON admin_user.id = mr.resolved_by
-                 WHERE mr.target_user_id = ?
+                 WHERE mr.target_user_id = ? OR mr.reporter_id = ?
                  ORDER BY mr.updated_at DESC, mr.created_at DESC
                  LIMIT 10`,
-                [req.auth.user.id]
+                [req.auth.user.id, req.auth.user.id]
             ),
             dbp.query(
                 `SELECT ma.id, ma.action_type, ma.notes, ma.created_at,
@@ -1367,6 +1367,28 @@ app.post("/admin/users/:userId/action", requireAuth, requireAdmin, asyncHandler(
     }
 
     res.json({ message: "Admin action saved" });
+}));
+
+app.post("/admin/reports/:reportId/message", requireAuth, requireAdmin, asyncHandler(async (req, res) => {
+    const reportId = Number(req.params.reportId);
+    const adminNotes = String(req.body?.notes || "").trim();
+
+    if (!Number.isFinite(reportId)) return res.status(400).json({ message: "Invalid report" });
+    if (!adminNotes) return res.status(400).json({ message: "Enter the message to send about this review" });
+
+    const [rows] = await dbp.query(
+        "SELECT id, report_type, target_user_id FROM moderation_reports WHERE id = ?",
+        [reportId]
+    );
+    const report = rows[0];
+    if (!report) return res.status(404).json({ message: "Report not found" });
+    if (String(report.report_type || "").toLowerCase() !== "review") {
+        return res.status(400).json({ message: "Messages can only be sent for reviews" });
+    }
+
+    await resolveReport(reportId, req.auth.user.id, "message", adminNotes);
+    await createModerationAction(req.auth.user.id, report.target_user_id, reportId, "message", adminNotes);
+    res.json({ message: "Review message sent" });
 }));
 
 app.post("/admin/reports/:reportId/dismiss", requireAuth, requireAdmin, asyncHandler(async (req, res) => {

@@ -32,6 +32,7 @@ function statusClass(status) {
     if (normalized === "warning") return "status-pill status-pill--warning";
     if (normalized === "ban") return "status-pill status-pill--ban";
     if (normalized === "remove") return "status-pill status-pill--remove";
+    if (normalized === "message") return "status-pill status-pill--resolved";
     return "status-pill status-pill--placed";
 }
 
@@ -80,9 +81,11 @@ function showCustomerWarning(profile, warningActions = []) {
 
     customerAccountWarningEl.style.display = "block";
     customerAccountWarningEl.innerHTML = `
-        <h3>Admin Warning On Your Account</h3>
-        <p>This is a warning from the admin. Please read the exact message below.</p>
-        ${warningItems}
+        <details class="account-warning__details">
+            <summary>Warning${warningCount > 1 ? ` (${warningCount})` : ""}</summary>
+            <p>This is a warning from the admin. Please read the exact message below.</p>
+            ${warningItems}
+        </details>
     `;
 }
 
@@ -93,6 +96,7 @@ function adminActionLabel(action, status) {
     if (normalizedAction === "ban") return "User banned";
     if (normalizedAction === "remove") return "User removed";
     if (normalizedAction === "activate") return "Account reactivated";
+    if (normalizedAction === "message") return "Admin message sent";
     if (normalizedStatus === "dismissed") return "Complaint dismissed";
     if (normalizedStatus === "resolved") return "Action completed";
     return "Pending review";
@@ -111,6 +115,9 @@ function adminActionMessage(report) {
     }
     if (resolution === "activate") {
         return "The admin reviewed the case and reactivated the account.";
+    }
+    if (resolution === "message") {
+        return "The admin reviewed this review and sent a message.";
     }
     if (String(report.status || "").toLowerCase() === "dismissed") {
         return "The admin reviewed this report and dismissed it.";

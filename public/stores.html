@@ -30,6 +30,7 @@
     </section>
 
     <section id="customerAccountWarning" class="store-account-warning" style="display:none;"></section>
+    <section id="customerReviewMessages" class="store-account-review" style="display:none;"></section>
 
     <section class="stores-status" id="locationStatus">
         Finding stores near you....
@@ -51,6 +52,7 @@
         afterLogin: "stores.html"
     });
     showCustomerWarning(session?.user, session?.warning_actions || []);
+    showCustomerReviewMessages(session?.moderation_reports || []);
 })();
 
 function escapeWarningHtml(value) {
@@ -99,9 +101,44 @@ function showCustomerWarning(profile, warningActions) {
 
     warningEl.style.display = "block";
     warningEl.innerHTML = `
-        <h3>Admin Warning On Your Account</h3>
-        <p>This is a warning from the admin. Please read the exact message below.</p>
-        ${warningItems}
+        <details class="store-account-warning__details">
+            <summary>Warning${warningCount > 1 ? ` (${warningCount})` : ""}</summary>
+            <p>This is a warning from the admin. Please read the exact message below.</p>
+            ${warningItems}
+        </details>
+    `;
+}
+
+function showCustomerReviewMessages(moderationReports) {
+    const reviewEl = document.getElementById("customerReviewMessages");
+    if (!reviewEl) return;
+
+    const reviewMessages = Array.isArray(moderationReports)
+        ? moderationReports.filter((report) => {
+            const isReview = String(report.report_type || "").toLowerCase() === "review";
+            const isMessage = String(report.resolution_action || "").toLowerCase() === "message";
+            return isReview && isMessage && String(report.admin_notes || "").trim();
+        })
+        : [];
+
+    if (!reviewMessages.length) {
+        reviewEl.style.display = "none";
+        reviewEl.innerHTML = "";
+        return;
+    }
+
+    reviewEl.style.display = "block";
+    reviewEl.innerHTML = `
+        <details class="store-account-review__details">
+            <summary>Review${reviewMessages.length > 1 ? ` (${reviewMessages.length})` : ""}</summary>
+            <p>Please read the exact review message sent by the admin.</p>
+            ${reviewMessages.map((report) => `
+                <div class="store-account-review__item">
+                    <span>Review Message</span>
+                    <strong>${escapeWarningHtml(report.admin_notes)}</strong>
+                </div>
+            `).join("")}
+        </details>
     `;
 }
 

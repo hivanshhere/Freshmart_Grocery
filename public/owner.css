@@ -30,14 +30,25 @@ color:#6a4700;
 }
 
 .owner-notice--error{
-border-color:rgba(185,73,59,0.18);
-background:linear-gradient(135deg, #fdeceb 0%, #fff6f5 100%);
-color:#8c2f22;
+border-color:rgba(185,35,35,0.24);
+background:linear-gradient(135deg, #fde1df 0%, #fff4f3 100%);
+color:#8c1f1a;
 }
 
 .owner-notice h3{
 margin:0 0 8px;
 font-size:22px;
+color:inherit;
+}
+
+.owner-notice__details summary{
+cursor:pointer;
+font-size:22px;
+font-weight:800;
+color:inherit;
+}
+
+.owner-notice__details summary::marker{
 color:inherit;
 }
 
